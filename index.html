@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会津若松市 勤務実績管理システム</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (Excel Export) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* 印刷用スタイル */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 10mm;
+            }
+            body {
+                background-color: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                height: auto;
+                overflow: visible;
+            }
+            /* 印刷時は画面上の全ての要素を非表示にする */
+            body * {
+                visibility: hidden;
+            }
+            /* 印刷コンテナとその子要素だけを表示する */
+            .print-container, .print-container * {
+                visibility: visible;
+            }
+            /* 印刷コンテナをページ最上部に絶対配置する */
+            .print-container {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                border: none;
+                box-shadow: none;
+            }
+            
+            /* UI要素の非表示 */
+            .no-print {
+                display: none !important;
+            }
+
+            table, th, td {
+                border: 1px solid black !important;
+                border-collapse: collapse;
+            }
+            input, textarea, select {
+                border: none;
+                background: transparent;
+                resize: none;
+                padding: 0;
+                margin: 0;
+                font-size: 11px;
+                /* 印刷時にselectの矢印を消す */
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+                text-align: center;
+                text-align-last: center; /* for chrome/safari */
+            }
+            /* 印刷時のプレースホルダーを消す */
+            input::placeholder {
+                color: transparent;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- 定数・設定 ---
+        const STATUS_OPTIONS = [
+            { value: 'work', label: '出勤', defaultTime: true },
+            { value: 'off_assigned', label: '週休日', defaultTime: false },
+            { value: 'holiday', label: '祝日', defaultTime: false },
+            { value: 'paid_leave', label: '年休', defaultTime: false },
+            { value: 'special_leave', label: '特別休暇', defaultTime: false },
+            { value: 'substitute', label: '振替休日', defaultTime: false },
+            { value: 'absent', label: '欠勤', defaultTime: false },
+        ];
+
+        const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+        // 簡易祝日データ (2025年度)
+        const HOLIDAYS_2025 = {
+            '2025-01-01': '元日', '2025-01-13': '成人の日', '2025-02-11': '建国記念の日',
+            '2025-02-23': '天皇誕生日', '2025-02-24': '振替休日', '2025-03-20': '春分の日',
+            '2025-04-29': '昭和の日', '2025-05-03': '憲法記念日', '2025-05-04': 'みどりの日',
+            '2025-05-05': 'こどもの日', '2025-05-06': '振替休日', '2025-07-21': '海の日',
+            '2025-08-11': '山の日', '2025-09-15': '敬老の日', '2025-09-23': '秋分の日',
+            '2025-10-13': 'スポーツの日', '2025-11-03': '文化の日', '2025-11-23': '勤労感謝の日',
+            '2025-11-24': '振替休日'
+        };
+
+        const STORAGE_KEY = 'aizu_kintai_v1';
+
+        // 15分刻みの時間オプション生成 (00:00 - 23:45)
+        const TIME_OPTIONS = [];
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 15) {
+                const hh = String(h).padStart(2, '0');
+                const mm = String(m).padStart(2, '0');
+                TIME_OPTIONS.push(`${hh}:${mm}`);
+            }
+        }
+
+        // 時間計算ユーティリティ
+        const timeToMinutes = (timeStr) => {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':').map(Number);
+            return h * 60 + m;
+        };
+
+        const minutesToTime = (mins) => {
+            if (mins <= 0) return '';
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            return `${h}:${m.toString().padStart(2, '0')}`;
+        };
+
+        // コンポーネント: 時間選択プルダウン
+        const TimeSelect = ({ value, onChange, disabled }) => (
+            <select 
+                className={`w-full text-center outline-none bg-transparent ${disabled ? 'text-gray-300' : ''}`}
+                value={value || ''}
+                onChange={onChange}
+                disabled={disabled}
+            >
+                <option value="">-</option>
+                {TIME_OPTIONS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                ))}
+            </select>
+        );
+
+        const App = () => {
+            // --- State ---
+            const [db, setDb] = useState({ 
+                users: ['会津 太郎'], 
+                userSettings: { '会津 太郎': { fixedOffDay: 5 } }, 
+                data: {} 
+            });
+            
+            const [currentUser, setCurrentUser] = useState('会津 太郎');
+            const [year, setYear] = useState(2025);
+            const [month, setMonth] = useState(4);
+            const [fixedOffDay, setFixedOffDay] = useState(5);
+            
+            const [currentRecords, setCurrentRecords] = useState({});
+            const [isAddingUser, setIsAddingUser] = useState(false);
+            const [newUserName, setNewUserName] = useState('');
+            const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+            // --- Effects ---
+            useEffect(() => {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (parsed.users && Array.isArray(parsed.users)) {
+                            if (!parsed.userSettings) {
+                                parsed.userSettings = {};
+                                parsed.users.forEach(u => {
+                                    parsed.userSettings[u] = { fixedOffDay: 5 };
+                                });
+                            }
+                            setDb(parsed);
+                            if (parsed.users.length > 0) {
+                                setCurrentUser(parsed.users[0]);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("データ読み込みエラー", e);
+                    }
+                }
+            }, []);
+
+            useEffect(() => {
+                const settings = db.userSettings?.[currentUser];
+                if (settings) {
+                    setFixedOffDay(settings.fixedOffDay !== undefined ? settings.fixedOffDay : 5);
+                } else {
+                    setFixedOffDay(5);
+                }
+            }, [currentUser, db.userSettings]);
+
+            useEffect(() => {
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const existingUserData = db.data[currentUser] || {};
+                const newRecords = {};
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    
+                    if (existingUserData[dateStr]) {
+                        newRecords[dateStr] = existingUserData[dateStr];
+                    } else {
+                        const dateObj = new Date(year, month - 1, d);
+                        const dayOfWeek = dateObj.getDay();
+                        
+                        let status = 'work';
+                        let start = '08:30';
+                        let end = '17:15';
+                        let breakTime = '60';
+
+                        if (dayOfWeek === 0 || dayOfWeek === 6) {
+                            status = 'off_assigned';
+                            start = ''; end = ''; breakTime = '';
+                        } else if (dayOfWeek === fixedOffDay) {
+                            status = 'off_assigned';
+                            start = ''; end = ''; breakTime = '';
+                        } else if (HOLIDAYS_2025[dateStr]) {
+                            status = 'holiday';
+                            start = ''; end = ''; breakTime = '';
+                        }
+
+                        newRecords[dateStr] = {
+                            status,
+                            start,
+                            end,
+                            breakTime,
+                            content: '',
+                            location: '集落センター',
+                            remarks: HOLIDAYS_2025[dateStr] || ''
+                        };
+                    }
+                }
+                setCurrentRecords(newRecords);
+            }, [year, month, currentUser, fixedOffDay, db.users]);
+
+            const saveData = (updatedRecords) => {
+                const newDb = {
+                    ...db,
+                    data: {
+                        ...db.data,
+                        [currentUser]: {
+                            ...(db.data[currentUser] || {}),
+                            ...updatedRecords
+                        }
+                    }
+                };
+                setDb(newDb);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
+            };
+
+            // --- Handlers ---
+            const handleFixedOffDayChange = (newDay) => {
+                const dayNum = Number(newDay);
+                setFixedOffDay(dayNum);
+                const newDb = {
+                    ...db,
+                    userSettings: {
+                        ...db.userSettings,
+                        [currentUser]: {
+                            ...(db.userSettings?.[currentUser] || {}),
+                            fixedOffDay: dayNum
+                        }
+                    }
+                };
+                setDb(newDb);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
+            };
+
+            const handleRecordChange = (dateStr, field, value) => {
+                const updatedRecords = { ...currentRecords };
+                const currentRecord = { ...updatedRecords[dateStr] };
+                currentRecord[field] = value;
+
+                if (field === 'status') {
+                    if (value === 'work') {
+                        currentRecord.start = '08:30';
+                        currentRecord.end = '17:15';
+                        currentRecord.breakTime = '60';
+                    } else {
+                        currentRecord.start = '';
+                        currentRecord.end = '';
+                        currentRecord.breakTime = '';
+                    }
+                }
+
+                updatedRecords[dateStr] = currentRecord;
+                setCurrentRecords(updatedRecords);
+                saveData(updatedRecords);
+            };
+
+            const handleAddUser = () => {
+                if (newUserName && !db.users.includes(newUserName)) {
+                    const newDb = { 
+                        ...db, 
+                        users: [...db.users, newUserName],
+                        userSettings: {
+                            ...db.userSettings,
+                            [newUserName]: { fixedOffDay: 5 }
+                        }
+                    };
+                    setDb(newDb);
+                    setCurrentUser(newUserName);
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
+                    setNewUserName('');
+                    setIsAddingUser(false);
+                }
+            };
+
+            const executeDeleteUser = () => {
+                const newUsers = db.users.filter(u => u !== currentUser);
+                const newData = { ...db.data };
+                delete newData[currentUser];
+                const newSettings = { ...db.userSettings };
+                delete newSettings[currentUser];
+                
+                const newDb = { users: newUsers, data: newData, userSettings: newSettings };
+                setDb(newDb);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
+                
+                if (newUsers.length > 0) {
+                    setCurrentUser(newUsers[0]);
+                } else {
+                    const defaultName = '新規ユーザー';
+                    setDb({ 
+                        users: [defaultName], 
+                        userSettings: { [defaultName]: { fixedOffDay: 5 } }, 
+                        data: {} 
+                    });
+                    setCurrentUser(defaultName);
+                }
+                setShowDeleteConfirm(false);
+            };
+
+            const handlePrint = () => {
+                try {
+                    window.print();
+                } catch (e) {
+                    alert("印刷ダイアログが開けませんでした。\nキーボードの [Ctrl] + [P] (MacはCommand+P) を押して印刷してください。");
+                }
+            };
+
+            const calculateOvertime = (record) => {
+                if (record.status !== 'work' && record.status !== 'substitute') return '';
+                if (!record.start || !record.end) return '';
+
+                const startM = timeToMinutes(record.start);
+                const endM = timeToMinutes(record.end);
+                const breakM = parseInt(record.breakTime || 0);
+                const workM = endM - startM - breakM;
+                const standardM = 465; // 7h45m
+
+                const overtimeM = workM - standardM;
+                return overtimeM > 0 ? minutesToTime(overtimeM) : '';
+            };
+
+            const exportToExcel = () => {
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const data = [];
+
+                data.push(['日付', '曜日', '業務内容', '勤務場所', '出勤', '退勤', '時間外', '備考', '詳細ステータス']);
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const r = currentRecords[dateStr] || {};
+                    const dateObj = new Date(year, month - 1, d);
+                    const weekDay = WEEKDAYS[dateObj.getDay()];
+                    
+                    let displayRemarks = r.remarks || '';
+                    if(r.status === 'paid_leave') displayRemarks = "年休 " + displayRemarks;
+                    if(r.status === 'substitute') displayRemarks = "振替休日 " + displayRemarks;
+                    if(r.status === 'off_assigned') displayRemarks = "週休日";
+                    if(r.status === 'holiday') displayRemarks = "祝日";
+
+                    data.push([
+                        `${month}/${d}`,
+                        weekDay,
+                        r.content || '',
+                        r.location || '',
+                        r.start || '',
+                        r.end || '',
+                        calculateOvertime(r),
+                        displayRemarks,
+                        STATUS_OPTIONS.find(o => o.value === r.status)?.label || r.status
+                    ]);
+                }
+
+                const workDays = Object.values(currentRecords).filter(r => r.status === 'work' || r.status === 'substitute').length;
+                data.push([]);
+                data.push(['合計', '', '', '', `出勤日数: ${workDays}日`]);
+
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(data);
+
+                ws['!cols'] = [
+                    { wch: 10 }, { wch: 5 }, { wch: 30 }, { wch: 15 }, 
+                    { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 10 }
+                ];
+
+                XLSX.utils.book_append_sheet(wb, ws, `${year}年${month}月`);
+                XLSX.writeFile(wb, `勤務実績_${currentUser}_${year}年${month}月.xlsx`);
+            };
+
+            const summary = useMemo(() => {
+                let workDays = 0, paidLeaveDays = 0, absentDays = 0;
+                Object.values(currentRecords).forEach(r => {
+                    if (r.status === 'work' || r.status === 'substitute') workDays++;
+                    if (r.status === 'paid_leave') paidLeaveDays++;
+                    if (r.status === 'absent') absentDays++;
+                });
+                return { workDays, paidLeaveDays, absentDays };
+            }, [currentRecords]);
+
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const dateList = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                dateList.push({
+                    d,
+                    dateStr: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+                    dayOfWeek: new Date(year, month - 1, d).getDay()
+                });
+            }
+
+            return (
+                <div className="min-h-screen pb-10">
+                    <div className="no-print bg-white shadow p-4 mb-6 sticky top-0 z-10">
+                        <div className="max-w-6xl mx-auto space-y-4">
+                            <div className="flex flex-wrap gap-4 items-center justify-between">
+                                <h1 className="text-xl font-bold text-gray-800">会津若松市 勤務実績管理システム</h1>
+                                <div className="flex gap-2">
+                                    <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2 text-sm">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                        Excel出力
+                                    </button>
+                                    <button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2 text-sm">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                                        印刷 / PDF保存
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <p className="text-xs text-red-600 text-right no-print">
+                                ※「印刷 / PDF保存」ボタンが反応しない場合は、キーボードの <strong>Ctrl + P</strong> (Macは Command + P) を押してください。
+                            </p>
+
+                            <div className="flex flex-wrap gap-4 items-start bg-gray-50 p-3 rounded border">
+                                <div className="border-r pr-4 mr-2 relative">
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">ユーザー選択</label>
+                                    <div className="flex gap-2 items-center">
+                                        <select 
+                                            value={currentUser} 
+                                            onChange={(e) => setCurrentUser(e.target.value)}
+                                            className="border rounded p-1 w-40"
+                                        >
+                                            {db.users.map(u => <option key={u} value={u}>{u}</option>)}
+                                        </select>
+                                        <button onClick={() => setIsAddingUser(true)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">＋新規</button>
+                                        <button onClick={() => setShowDeleteConfirm(true)} className="text-xs text-red-500 hover:underline ml-1" title="現在のユーザーを削除">削除</button>
+                                    </div>
+                                    {isAddingUser && (
+                                        <div className="mt-2 flex gap-1 absolute top-full left-0 bg-white p-2 border shadow-lg z-20 rounded w-60">
+                                            <input 
+                                                type="text" 
+                                                placeholder="氏名を入力" 
+                                                className="border rounded p-1 text-sm w-32"
+                                                value={newUserName}
+                                                onChange={(e) => setNewUserName(e.target.value)}
+                                            />
+                                            <button onClick={handleAddUser} className="bg-blue-500 text-white px-2 py-1 rounded text-xs whitespace-nowrap">追加</button>
+                                            <button onClick={() => setIsAddingUser(false)} className="text-gray-500 px-1 text-xs">✕</button>
+                                        </div>
+                                    )}
+                                    {showDeleteConfirm && (
+                                        <div className="mt-2 absolute top-full left-0 bg-white p-3 border border-red-200 shadow-xl z-30 rounded w-64">
+                                            <p className="text-xs font-bold text-red-600 mb-2">
+                                                「{currentUser}」を削除しますか？<br/>
+                                                <span className="font-normal text-gray-600">この操作は取り消せません。</span>
+                                            </p>
+                                            <div className="flex justify-end gap-2">
+                                                <button 
+                                                    onClick={() => setShowDeleteConfirm(false)} 
+                                                    className="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-xs"
+                                                >
+                                                    キャンセル
+                                                </button>
+                                                <button 
+                                                    onClick={executeDeleteUser} 
+                                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs"
+                                                >
+                                                    削除実行
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">対象年月</label>
+                                    <div className="flex gap-1 items-center">
+                                        <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="border rounded p-1 w-16" />
+                                        <span>年</span>
+                                        <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="border rounded p-1 w-14">
+                                            {[...Array(12)].map((_, i) => (
+                                                <option key={i+1} value={i+1}>{i+1}</option>
+                                            ))}
+                                        </select>
+                                        <span>月</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">週休日設定 (土日以外)</label>
+                                    <select value={fixedOffDay} onChange={(e) => handleFixedOffDayChange(e.target.value)} className="border rounded p-1">
+                                        <option value={1}>月曜日</option>
+                                        <option value={2}>火曜日</option>
+                                        <option value={3}>水曜日</option>
+                                        <option value={4}>木曜日</option>
+                                        <option value={5}>金曜日</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <p className="text-xs text-gray-500 text-center">
+                                データはブラウザ内(LocalStorage)に自動保存されます。「Excel出力」でGoogleスプレッドシート等で使えるファイルをダウンロードできます。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="print-container bg-white max-w-[210mm] mx-auto p-8 shadow-lg min-h-[297mm]">
+                        <div className="text-center mb-6">
+                            <h2 className="text-xl font-bold border-b-2 border-black inline-block pb-1">
+                                令和 {year - 2018} 年 {month} 月 勤務実績 ({currentUser})
+                            </h2>
+                        </div>
+
+                        <table className="w-full text-sm border-collapse border border-black">
+                            <thead>
+                                <tr className="bg-gray-100 text-center h-10">
+                                    <th className="border border-black w-10">曜<br/>日</th>
+                                    <th className="border border-black w-8">日</th>
+                                    <th className="border border-black">業務内容</th>
+                                    <th className="border border-black w-32">勤務場所</th>
+                                    <th className="border border-black w-16">出勤</th>
+                                    <th className="border border-black w-16">退勤</th>
+                                    <th className="border border-black w-14">時間外</th>
+                                    <th className="border border-black w-24">備考</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {dateList.map(({ d, dateStr, dayOfWeek }) => {
+                                    const record = currentRecords[dateStr] || {};
+                                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                                    const isHoliday = record.status === 'holiday';
+                                    
+                                    const rowClass = (isWeekend || isHoliday) ? "bg-gray-50" : "";
+                                    const textClass = (dayOfWeek === 0 || isHoliday) ? "text-red-600" : (dayOfWeek === 6 ? "text-blue-600" : "text-black");
+
+                                    let displayRemarks = record.remarks || '';
+                                    if(record.status === 'paid_leave') displayRemarks = "年休 " + displayRemarks;
+                                    if(record.status === 'substitute') displayRemarks = "振替休日 " + displayRemarks;
+                                    if(record.status === 'off_assigned') displayRemarks = "週休日";
+                                    if(record.status === 'holiday') displayRemarks = "祝日";
+
+                                    const isWorkLike = record.status === 'work' || record.status === 'substitute';
+
+                                    return (
+                                        <tr key={dateStr} className={`h-10 ${rowClass}`}>
+                                            <td className={`border border-black text-center font-bold ${textClass}`}>
+                                                {WEEKDAYS[dayOfWeek]}
+                                            </td>
+                                            <td className="border border-black text-center font-bold">
+                                                {d}
+                                            </td>
+                                            <td className="border border-black px-1 align-middle">
+                                                <input 
+                                                    type="text" 
+                                                    className="w-full h-full outline-none bg-transparent"
+                                                    value={record.content || ''}
+                                                    onChange={(e) => handleRecordChange(dateStr, 'content', e.target.value)}
+                                                    placeholder={record.status === 'work' ? '業務内容を入力' : ''}
+                                                />
+                                            </td>
+                                            <td className="border border-black px-1 align-middle">
+                                                <input 
+                                                    type="text" 
+                                                    className="w-full h-full outline-none bg-transparent text-center"
+                                                    value={record.location || ''}
+                                                    onChange={(e) => handleRecordChange(dateStr, 'location', e.target.value)}
+                                                />
+                                            </td>
+                                            {/* 出勤 (Select) */}
+                                            <td className="border border-black text-center align-middle">
+                                                <TimeSelect 
+                                                    value={record.start} 
+                                                    onChange={(e) => handleRecordChange(dateStr, 'start', e.target.value)}
+                                                    disabled={!isWorkLike}
+                                                />
+                                            </td>
+                                            {/* 退勤 (Select) */}
+                                            <td className="border border-black text-center align-middle">
+                                                <TimeSelect 
+                                                    value={record.end} 
+                                                    onChange={(e) => handleRecordChange(dateStr, 'end', e.target.value)}
+                                                    disabled={!isWorkLike}
+                                                />
+                                            </td>
+                                            <td className="border border-black text-center align-middle">
+                                                {calculateOvertime(record)}
+                                            </td>
+                                            <td className="border border-black px-1 align-middle relative group">
+                                                <div className="print-only text-xs">{displayRemarks}</div>
+                                                <div className="no-print flex flex-col gap-1">
+                                                    <select 
+                                                        className="text-xs border rounded w-full mb-1"
+                                                        value={record.status}
+                                                        onChange={(e) => handleRecordChange(dateStr, 'status', e.target.value)}
+                                                    >
+                                                        {STATUS_OPTIONS.map(opt => (
+                                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <input 
+                                                        type="text" 
+                                                        className="text-xs border-b w-full outline-none placeholder-gray-300"
+                                                        placeholder="備考追記..."
+                                                        value={record.remarks || ''}
+                                                        onChange={(e) => handleRecordChange(dateStr, 'remarks', e.target.value)}
+                                                    />
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+
+                        <div className="mt-4 flex justify-between items-start text-sm">
+                            <div className="border border-black p-2 w-1/3">
+                                <div className="flex justify-between border-b border-black border-dashed mb-1">
+                                    <span>出勤日数</span>
+                                    <span className="font-bold">{summary.workDays} 日</span>
+                                </div>
+                                <div className="flex justify-between border-b border-black border-dashed mb-1">
+                                    <span>年休取得</span>
+                                    <span className="font-bold">{summary.paidLeaveDays} 日</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>欠勤</span>
+                                    <span className="font-bold">{summary.absentDays} 日</span>
+                                </div>
+                            </div>
+
+                            <div className="w-1/2 text-xs leading-relaxed border border-gray-300 p-2 text-gray-600">
+                                <strong>【勤務条件確認】</strong><br/>
+                                ・週勤務日数: 4日<br/>
+                                ・通常勤務時間: 8:30 ～ 17:15 (7時間45分)<br/>
+                                ・休憩時間: 12:00 ～ 13:00 (60分)<br/>
+                                ・週休日: 土曜、日曜、他1日({WEEKDAYS[fixedOffDay]}曜日)<br/>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-8 flex justify-end gap-16 no-print">
+                            <div className="text-center">
+                                <div className="border-b border-black w-24 h-16"></div>
+                                <div className="text-sm mt-1">所属長</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="border-b border-black w-24 h-16"></div>
+                                <div className="text-sm mt-1">担当者</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="border-b border-black w-24 h-16"></div>
+                                <div className="text-sm mt-1">本人</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
