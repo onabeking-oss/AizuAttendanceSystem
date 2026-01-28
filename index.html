@@ -27,7 +27,7 @@
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 10mm;
+                margin: 5mm 10mm; /* 上下5mm, 左右10mm */
             }
             body {
                 background-color: white;
@@ -35,6 +35,7 @@
                 print-color-adjust: exact;
                 height: auto;
                 overflow: visible;
+                font-size: 10pt; /* ベースフォントサイズを少し下げる */
             }
             /* 印刷時は画面上の全ての要素を非表示にする */
             body * {
@@ -54,6 +55,7 @@
                 padding: 0;
                 border: none;
                 box-shadow: none;
+                min-height: auto !important; /* 強制的な高さを解除 */
             }
             
             /* UI要素の非表示 */
@@ -61,27 +63,51 @@
                 display: none !important;
             }
 
-            table, th, td {
+            h2 {
+                font-size: 16pt;
+                margin-bottom: 5mm !important;
+                margin-top: 0 !important;
+            }
+
+            table {
+                font-size: 9pt; /* テーブル内の文字を小さく */
                 border: 1px solid black !important;
                 border-collapse: collapse;
+                width: 100%;
             }
+            th, td {
+                border: 1px solid black !important;
+                padding: 1px 2px !important; /* パディングを詰める */
+                height: auto !important; /* 高さを自動調整 */
+            }
+            /* 行の高さを制御 */
+            tr {
+                height: 1.2rem !important; 
+            }
+
             input, textarea, select {
                 border: none;
                 background: transparent;
                 resize: none;
                 padding: 0;
                 margin: 0;
-                font-size: 11px;
+                font-size: inherit; /* 親のフォントサイズを継承 */
+                width: 100%;
                 /* 印刷時にselectの矢印を消す */
                 -webkit-appearance: none;
                 -moz-appearance: none;
                 appearance: none;
                 text-align: center;
-                text-align-last: center; /* for chrome/safari */
+                text-align-last: center; 
             }
             /* 印刷時のプレースホルダーを消す */
             input::placeholder {
                 color: transparent;
+            }
+            
+            /* 押印欄などの調整 */
+            .footer-section {
+                margin-top: 5mm !important;
             }
         }
     </style>
@@ -105,15 +131,17 @@
 
         const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
-        // 簡易祝日データ (2025年度)
-        const HOLIDAYS_2025 = {
+        // 簡易祝日データ (2025-2026年度)
+        const HOLIDAYS_DATA = {
             '2025-01-01': '元日', '2025-01-13': '成人の日', '2025-02-11': '建国記念の日',
             '2025-02-23': '天皇誕生日', '2025-02-24': '振替休日', '2025-03-20': '春分の日',
             '2025-04-29': '昭和の日', '2025-05-03': '憲法記念日', '2025-05-04': 'みどりの日',
             '2025-05-05': 'こどもの日', '2025-05-06': '振替休日', '2025-07-21': '海の日',
             '2025-08-11': '山の日', '2025-09-15': '敬老の日', '2025-09-23': '秋分の日',
             '2025-10-13': 'スポーツの日', '2025-11-03': '文化の日', '2025-11-23': '勤労感謝の日',
-            '2025-11-24': '振替休日'
+            '2025-11-24': '振替休日',
+            '2026-01-01': '元日', '2026-01-12': '成人の日', '2026-02-11': '建国記念の日',
+            '2026-02-23': '天皇誕生日'
         };
 
         const STORAGE_KEY = 'aizu_kintai_v1';
@@ -161,14 +189,17 @@
             // --- State ---
             const [db, setDb] = useState({ 
                 users: ['会津 太郎'], 
-                userSettings: { '会津 太郎': { fixedOffDay: 5 } }, 
+                userSettings: { '会津 太郎': { fixedOffDay: 5, defaultLocation: '集落センター' } }, 
                 data: {} 
             });
             
             const [currentUser, setCurrentUser] = useState('会津 太郎');
-            const [year, setYear] = useState(2025);
-            const [month, setMonth] = useState(4);
+            const [year, setYear] = useState(2026);
+            const [month, setMonth] = useState(1);
+            
+            // ユーザー設定用State
             const [fixedOffDay, setFixedOffDay] = useState(5);
+            const [defaultLocation, setDefaultLocation] = useState('集落センター');
             
             const [currentRecords, setCurrentRecords] = useState({});
             const [isAddingUser, setIsAddingUser] = useState(false);
@@ -176,16 +207,28 @@
             const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
             // --- Effects ---
+            
+            // 1. 初期ロード
             useEffect(() => {
                 const saved = localStorage.getItem(STORAGE_KEY);
                 if (saved) {
                     try {
                         const parsed = JSON.parse(saved);
                         if (parsed.users && Array.isArray(parsed.users)) {
+                            // 旧データ形式への対応: userSettingsがない場合など
                             if (!parsed.userSettings) {
                                 parsed.userSettings = {};
                                 parsed.users.forEach(u => {
-                                    parsed.userSettings[u] = { fixedOffDay: 5 };
+                                    parsed.userSettings[u] = { fixedOffDay: 5, defaultLocation: '集落センター' };
+                                });
+                            } else {
+                                // defaultLocationがない場合の対応
+                                parsed.users.forEach(u => {
+                                    if (!parsed.userSettings[u]) {
+                                        parsed.userSettings[u] = { fixedOffDay: 5, defaultLocation: '集落センター' };
+                                    } else if (!parsed.userSettings[u].defaultLocation) {
+                                        parsed.userSettings[u].defaultLocation = '集落センター';
+                                    }
                                 });
                             }
                             setDb(parsed);
@@ -199,26 +242,35 @@
                 }
             }, []);
 
+            // 2. ユーザー切り替え時の設定反映
             useEffect(() => {
                 const settings = db.userSettings?.[currentUser];
                 if (settings) {
                     setFixedOffDay(settings.fixedOffDay !== undefined ? settings.fixedOffDay : 5);
+                    setDefaultLocation(settings.defaultLocation || '集落センター');
                 } else {
                     setFixedOffDay(5);
+                    setDefaultLocation('集落センター');
                 }
             }, [currentUser, db.userSettings]);
 
+            // 3. データ生成 (ユーザー、年月、基本設定変更時)
             useEffect(() => {
                 const daysInMonth = new Date(year, month, 0).getDate();
                 const existingUserData = db.data[currentUser] || {};
                 const newRecords = {};
 
+                // ユーザー設定からデフォルト値を取得
+                const userDefaultLoc = db.userSettings?.[currentUser]?.defaultLocation || '集落センター';
+
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     
                     if (existingUserData[dateStr]) {
+                        // 既存データがある場合はそのまま使用
                         newRecords[dateStr] = existingUserData[dateStr];
                     } else {
+                        // 新規データ作成
                         const dateObj = new Date(year, month - 1, d);
                         const dayOfWeek = dateObj.getDay();
                         
@@ -233,7 +285,7 @@
                         } else if (dayOfWeek === fixedOffDay) {
                             status = 'off_assigned';
                             start = ''; end = ''; breakTime = '';
-                        } else if (HOLIDAYS_2025[dateStr]) {
+                        } else if (HOLIDAYS_DATA[dateStr]) {
                             status = 'holiday';
                             start = ''; end = ''; breakTime = '';
                         }
@@ -244,13 +296,13 @@
                             end,
                             breakTime,
                             content: '',
-                            location: '集落センター',
-                            remarks: HOLIDAYS_2025[dateStr] || ''
+                            location: userDefaultLoc, // デフォルト場所を設定
+                            remarks: HOLIDAYS_DATA[dateStr] || ''
                         };
                     }
                 }
                 setCurrentRecords(newRecords);
-            }, [year, month, currentUser, fixedOffDay, db.users]);
+            }, [year, month, currentUser, fixedOffDay, defaultLocation, db.users]);
 
             const saveData = (updatedRecords) => {
                 const newDb = {
@@ -271,13 +323,22 @@
             const handleFixedOffDayChange = (newDay) => {
                 const dayNum = Number(newDay);
                 setFixedOffDay(dayNum);
+                updateUserSettings({ fixedOffDay: dayNum });
+            };
+
+            const handleDefaultLocationChange = (newLoc) => {
+                setDefaultLocation(newLoc);
+                updateUserSettings({ defaultLocation: newLoc });
+            };
+
+            const updateUserSettings = (newSettings) => {
                 const newDb = {
                     ...db,
                     userSettings: {
                         ...db.userSettings,
                         [currentUser]: {
                             ...(db.userSettings?.[currentUser] || {}),
-                            fixedOffDay: dayNum
+                            ...newSettings
                         }
                     }
                 };
@@ -295,6 +356,10 @@
                         currentRecord.start = '08:30';
                         currentRecord.end = '17:15';
                         currentRecord.breakTime = '60';
+                        // ステータスが出勤に戻ったとき、場所が空ならデフォルトを入れる配慮
+                        if (!currentRecord.location) {
+                            currentRecord.location = defaultLocation;
+                        }
                     } else {
                         currentRecord.start = '';
                         currentRecord.end = '';
@@ -314,7 +379,7 @@
                         users: [...db.users, newUserName],
                         userSettings: {
                             ...db.userSettings,
-                            [newUserName]: { fixedOffDay: 5 }
+                            [newUserName]: { fixedOffDay: 5, defaultLocation: '集落センター' }
                         }
                     };
                     setDb(newDb);
@@ -342,7 +407,7 @@
                     const defaultName = '新規ユーザー';
                     setDb({ 
                         users: [defaultName], 
-                        userSettings: { [defaultName]: { fixedOffDay: 5 } }, 
+                        userSettings: { [defaultName]: { fixedOffDay: 5, defaultLocation: '集落センター' } }, 
                         data: {} 
                     });
                     setCurrentUser(defaultName);
@@ -526,15 +591,28 @@
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">週休日設定 (土日以外)</label>
-                                    <select value={fixedOffDay} onChange={(e) => handleFixedOffDayChange(e.target.value)} className="border rounded p-1">
-                                        <option value={1}>月曜日</option>
-                                        <option value={2}>火曜日</option>
-                                        <option value={3}>水曜日</option>
-                                        <option value={4}>木曜日</option>
-                                        <option value={5}>金曜日</option>
-                                    </select>
+                                {/* 設定エリア */}
+                                <div className="border-l pl-4 flex gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">週休日 (土日以外)</label>
+                                        <select value={fixedOffDay} onChange={(e) => handleFixedOffDayChange(e.target.value)} className="border rounded p-1 w-24">
+                                            <option value={1}>月曜日</option>
+                                            <option value={2}>火曜日</option>
+                                            <option value={3}>水曜日</option>
+                                            <option value={4}>木曜日</option>
+                                            <option value={5}>金曜日</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">デフォルト勤務場所</label>
+                                        <input 
+                                            type="text" 
+                                            value={defaultLocation} 
+                                            onChange={(e) => handleDefaultLocationChange(e.target.value)} 
+                                            className="border rounded p-1 w-32" 
+                                            placeholder="例: 集落センター"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                             
@@ -598,13 +676,17 @@
                                                     placeholder={record.status === 'work' ? '業務内容を入力' : ''}
                                                 />
                                             </td>
+                                            {/* 勤務場所: 出勤日のみ表示・編集可能 */}
                                             <td className="border border-black px-1 align-middle">
-                                                <input 
-                                                    type="text" 
-                                                    className="w-full h-full outline-none bg-transparent text-center"
-                                                    value={record.location || ''}
-                                                    onChange={(e) => handleRecordChange(dateStr, 'location', e.target.value)}
-                                                />
+                                                {isWorkLike ? (
+                                                    <input 
+                                                        type="text" 
+                                                        className="w-full h-full outline-none bg-transparent text-center"
+                                                        value={record.location || ''}
+                                                        onChange={(e) => handleRecordChange(dateStr, 'location', e.target.value)}
+                                                        placeholder={defaultLocation}
+                                                    />
+                                                ) : <span className="block h-full w-full"></span>}
                                             </td>
                                             {/* 出勤 (Select) */}
                                             <td className="border border-black text-center align-middle">
@@ -652,7 +734,7 @@
                             </tbody>
                         </table>
 
-                        <div className="mt-4 flex justify-between items-start text-sm">
+                        <div className="footer-section mt-4 flex justify-between items-start text-sm">
                             <div className="border border-black p-2 w-1/3">
                                 <div className="flex justify-between border-b border-black border-dashed mb-1">
                                     <span>出勤日数</span>
@@ -677,7 +759,7 @@
                             </div>
                         </div>
                         
-                        <div className="mt-8 flex justify-end gap-16 no-print">
+                        <div className="footer-section mt-8 flex justify-end gap-16 no-print">
                             <div className="text-center">
                                 <div className="border-b border-black w-24 h-16"></div>
                                 <div className="text-sm mt-1">所属長</div>
