@@ -14,6 +14,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- SheetJS (Excel Export) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <!-- Phosphor Icons (for icons) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
@@ -29,7 +31,7 @@
             display: block;
         }
 
-        /* 印刷用スタイル - 画面表示とは完全に切り離す */
+        /* 印刷用スタイル */
         @media print {
             @page {
                 size: A4 portrait;
@@ -41,15 +43,13 @@
                 print-color-adjust: exact;
                 width: 210mm;
                 height: 297mm;
-                overflow: hidden; /* 余計なページが出ないように */
+                overflow: hidden;
             }
             
-            /* 画面操作用UIを全非表示 */
             .screen-only, .no-print, #root > div > div.screen-only {
                 display: none !important;
             }
 
-            /* 印刷用コンテナを表示 */
             .print-only {
                 display: block !important;
                 position: absolute;
@@ -65,7 +65,6 @@
                 visibility: visible;
             }
 
-            /* 印刷用テーブル調整 */
             table.print-table {
                 width: 100%;
                 border-collapse: collapse;
@@ -82,7 +81,6 @@
                 white-space: nowrap;
             }
             
-            /* 入力要素のリセット */
             input, select {
                 border: none;
                 background: transparent;
@@ -137,12 +135,9 @@
         };
 
         const STORAGE_KEY = 'aizu_kintai_v1';
-        
-        // 勤務可能時間帯設定
         const WORK_START_HM = "08:30";
         const WORK_END_HM = "17:15";
 
-        // 時間オプション (00:00 - 23:45)
         const TIME_OPTIONS = [];
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 15) {
@@ -152,7 +147,6 @@
             }
         }
 
-        // 時間休用の選択肢 (8:30 - 17:15)
         const LEAVE_TIME_OPTIONS = TIME_OPTIONS.filter(t => {
             return t >= WORK_START_HM && t <= WORK_END_HM;
         });
@@ -171,17 +165,8 @@
             return `${h}:${m.toString().padStart(2, '0')}`;
         };
 
-        const addMinutes = (timeStr, minutes) => {
-            if (!timeStr) return '';
-            let total = timeToMinutes(timeStr) + minutes;
-            if (total < 0) total += 24 * 60;
-            if (total >= 24 * 60) total -= 24 * 60;
-            return minutesToTime(total);
-        };
-
         // --- コンポーネント ---
 
-        // 時間選択
         const TimeSelect = ({ value, onChange, disabled, options = TIME_OPTIONS, className = "" }) => (
             <select 
                 className={`outline-none bg-transparent w-full ${disabled ? 'text-gray-300' : ''} ${className}`}
@@ -190,34 +175,76 @@
                 disabled={disabled}
             >
                 <option value="">-</option>
-                {options.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                ))}
+                {options.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
         );
+
+        // ユーザー編集モーダル
+        const UserEditModal = ({ isOpen, onClose, userName, onRename, onDelete }) => {
+            const [editName, setEditName] = useState(userName);
+
+            useEffect(() => {
+                setEditName(userName);
+            }, [userName, isOpen]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden">
+                        <div className="bg-gray-800 text-white p-3 font-bold text-center">
+                            ユーザー編集
+                        </div>
+                        <div className="p-6">
+                            <div className="mb-4">
+                                <label className="block text-sm font-bold text-gray-700 mb-2">ユーザー名</label>
+                                <input 
+                                    type="text" 
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    className="border rounded w-full p-2 text-lg"
+                                />
+                            </div>
+                            <button 
+                                onClick={() => onRename(editName)}
+                                className="w-full bg-blue-600 text-white font-bold py-2 rounded shadow hover:bg-blue-700 mb-6"
+                            >
+                                名前を変更して保存
+                            </button>
+
+                            <div className="border-t pt-4">
+                                <p className="text-xs text-red-500 mb-2 text-center">※削除するとデータは復元できません</p>
+                                <button 
+                                    onClick={onDelete}
+                                    className="w-full bg-red-100 text-red-600 font-bold py-2 rounded hover:bg-red-200 border border-red-200"
+                                >
+                                    このユーザーを削除
+                                </button>
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 p-3 text-center border-t">
+                            <button onClick={onClose} className="text-gray-600 font-bold px-6 py-2 rounded hover:bg-gray-200">キャンセル</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
 
         // 休暇・変更メニューモーダル
         const LeaveControlModal = ({ isOpen, onClose, onApply }) => {
             if (!isOpen) return null;
-
-            // 時間休用のState
             const [hourlyStart, setHourlyStart] = useState('09:00');
             const [hourlyEnd, setHourlyEnd] = useState('10:00');
 
-            // 時間休計算
             const calculateHourlyLeave = () => {
                 if (!hourlyStart || !hourlyEnd) return { mins: 0, hours: 0 };
                 const startM = timeToMinutes(hourlyStart);
                 const endM = timeToMinutes(hourlyEnd);
                 let diff = endM - startM;
                 if (diff <= 0) diff = 0;
-                
-                // 1時間単位に切り上げ
                 const hoursDeducted = Math.ceil(diff / 60);
-                
                 return { mins: diff, hours: hoursDeducted };
             };
-
             const leaveStats = calculateHourlyLeave();
 
             return (
@@ -226,71 +253,41 @@
                         <div className="bg-blue-600 text-white p-3 font-bold text-center flex-shrink-0">
                             休暇・勤務変更
                         </div>
-                        
                         <div className="p-4 overflow-y-auto">
-                            {/* 半日休セクション */}
                             <div className="mb-4 border-b pb-4">
                                 <div className="text-sm font-bold text-gray-700 mb-2 flex items-center">
                                     <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded mr-2">半日</span>
                                     半日休暇 (4時間休)
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button 
-                                        onClick={() => onApply('am_leave')}
-                                        className="bg-blue-50 hover:bg-blue-100 text-blue-800 py-2 rounded border border-blue-200 text-sm"
-                                    >
-                                        <strong>午前半休</strong><br/>
-                                        <span className="text-xs">13:30 出勤</span>
+                                    <button onClick={() => onApply('am_leave')} className="bg-blue-50 hover:bg-blue-100 text-blue-800 py-2 rounded border border-blue-200 text-sm">
+                                        <strong>午前半休</strong><br/><span className="text-xs">13:30 出勤</span>
                                     </button>
-                                    <button 
-                                        onClick={() => onApply('pm_leave')}
-                                        className="bg-blue-50 hover:bg-blue-100 text-blue-800 py-2 rounded border border-blue-200 text-sm"
-                                    >
-                                        <strong>午後半休</strong><br/>
-                                        <span className="text-xs">12:15 退勤</span>
+                                    <button onClick={() => onApply('pm_leave')} className="bg-blue-50 hover:bg-blue-100 text-blue-800 py-2 rounded border border-blue-200 text-sm">
+                                        <strong>午後半休</strong><br/><span className="text-xs">12:15 退勤</span>
                                     </button>
                                 </div>
                             </div>
-
-                            {/* 時間休セクション */}
                             <div className="mb-4 border-b pb-4">
                                 <div className="text-sm font-bold text-gray-700 mb-2 flex items-center">
                                     <span className="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded mr-2">時間</span>
                                     時間休暇 (15分単位)
                                 </div>
-                                
                                 <div className="bg-gray-50 p-3 rounded border mb-2">
                                     <div className="flex items-center justify-center gap-2 mb-2">
-                                        <TimeSelect 
-                                            value={hourlyStart} 
-                                            onChange={(e) => setHourlyStart(e.target.value)} 
-                                            options={LEAVE_TIME_OPTIONS}
-                                            className="border rounded bg-white p-1 w-24 text-center" 
-                                        />
+                                        <TimeSelect value={hourlyStart} onChange={(e) => setHourlyStart(e.target.value)} options={LEAVE_TIME_OPTIONS} className="border rounded bg-white p-1 w-24 text-center" />
                                         <span>～</span>
-                                        <TimeSelect 
-                                            value={hourlyEnd} 
-                                            onChange={(e) => setHourlyEnd(e.target.value)} 
-                                            options={LEAVE_TIME_OPTIONS}
-                                            className="border rounded bg-white p-1 w-24 text-center" 
-                                        />
+                                        <TimeSelect value={hourlyEnd} onChange={(e) => setHourlyEnd(e.target.value)} options={LEAVE_TIME_OPTIONS} className="border rounded bg-white p-1 w-24 text-center" />
                                     </div>
                                     <div className="text-center text-xs text-gray-600">
                                         休む時間: <strong>{leaveStats.mins}分</strong> <span className="text-gray-400">→</span> 消化年休: <strong className="text-red-600 text-sm">{leaveStats.hours}時間</strong>
                                     </div>
-                                    <p className="text-[10px] text-gray-400 text-center mt-1">※8:30～17:15の間で入力してください<br/>※1時間単位で切り上げて消化されます</p>
+                                    <p className="text-[10px] text-gray-400 text-center mt-1">※8:30～17:15の間で入力<br/>※1時間単位で切り上げ消化</p>
                                 </div>
-
-                                <button 
-                                    onClick={() => onApply('hourly_leave', { start: hourlyStart, end: hourlyEnd, hours: leaveStats.hours })}
-                                    disabled={leaveStats.mins <= 0}
-                                    className={`w-full py-2 rounded font-bold text-sm ${leaveStats.mins > 0 ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-                                >
+                                <button onClick={() => onApply('hourly_leave', { start: hourlyStart, end: hourlyEnd, hours: leaveStats.hours })} disabled={leaveStats.mins <= 0} className={`w-full py-2 rounded font-bold text-sm ${leaveStats.mins > 0 ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
                                     時間休を適用
                                 </button>
                             </div>
-
-                            {/* その他セクション */}
                             <div>
                                 <div className="text-xs text-gray-500 mb-2">その他</div>
                                 <div className="grid grid-cols-2 gap-2">
@@ -299,7 +296,6 @@
                                 </div>
                             </div>
                         </div>
-
                         <div className="bg-gray-50 p-3 text-center border-t flex-shrink-0">
                             <button onClick={onClose} className="text-gray-600 font-bold px-6 py-2 rounded hover:bg-gray-200 text-sm">キャンセル</button>
                         </div>
@@ -316,7 +312,7 @@
                     '会津 太郎': { 
                         fixedOffDay: 5, 
                         defaultLocation: '集落センター',
-                        paidLeaveDays: 10 // デフォルト付与日数
+                        paidLeaveDays: 10 
                     } 
                 }, 
                 data: {} 
@@ -326,7 +322,6 @@
             const [year, setYear] = useState(2026);
             const [month, setMonth] = useState(1);
             
-            // Settings State
             const [fixedOffDay, setFixedOffDay] = useState(5);
             const [defaultLocation, setDefaultLocation] = useState('集落センター');
             const [paidLeaveGrantDays, setPaidLeaveGrantDays] = useState(10);
@@ -336,7 +331,7 @@
             // Modal States
             const [isAddingUser, setIsAddingUser] = useState(false);
             const [newUserName, setNewUserName] = useState('');
-            const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+            const [isEditingUser, setIsEditingUser] = useState(false); // ユーザー編集モード
             const [activeDateForModal, setActiveDateForModal] = useState(null);
 
             // --- Effects ---
@@ -349,7 +344,6 @@
                             if (!parsed.userSettings) parsed.userSettings = {};
                             parsed.users.forEach(u => {
                                 if (!parsed.userSettings[u]) parsed.userSettings[u] = {};
-                                // Default settings
                                 const settings = parsed.userSettings[u];
                                 if (settings.fixedOffDay === undefined) settings.fixedOffDay = 5;
                                 if (!settings.defaultLocation) settings.defaultLocation = '集落センター';
@@ -419,22 +413,13 @@
 
             // --- Logic ---
             const saveData = (updatedRecords) => {
-                const newDb = {
-                    ...db,
-                    data: { ...db.data, [currentUser]: { ...(db.data[currentUser] || {}), ...updatedRecords } }
-                };
+                const newDb = { ...db, data: { ...db.data, [currentUser]: { ...(db.data[currentUser] || {}), ...updatedRecords } } };
                 setDb(newDb);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
             };
 
             const updateUserSettings = (newSettings) => {
-                const newDb = {
-                    ...db,
-                    userSettings: {
-                        ...db.userSettings,
-                        [currentUser]: { ...(db.userSettings?.[currentUser] || {}), ...newSettings }
-                    }
-                };
+                const newDb = { ...db, userSettings: { ...db.userSettings, [currentUser]: { ...(db.userSettings?.[currentUser] || {}), ...newSettings } } };
                 setDb(newDb);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
             };
@@ -443,20 +428,14 @@
                 const updatedRecords = { ...currentRecords };
                 const currentRecord = { ...updatedRecords[dateStr] };
                 currentRecord[field] = value;
-
                 if (field === 'status') {
                     if (value === 'work') {
-                        currentRecord.start = '08:30';
-                        currentRecord.end = '17:15';
-                        currentRecord.breakTime = '60';
+                        currentRecord.start = '08:30'; currentRecord.end = '17:15'; currentRecord.breakTime = '60';
                         if (!currentRecord.location) currentRecord.location = defaultLocation;
                     } else {
-                        currentRecord.start = '';
-                        currentRecord.end = '';
-                        currentRecord.breakTime = '';
+                        currentRecord.start = ''; currentRecord.end = ''; currentRecord.breakTime = '';
                     }
                 }
-
                 updatedRecords[dateStr] = currentRecord;
                 setCurrentRecords(updatedRecords);
                 saveData(updatedRecords);
@@ -469,18 +448,13 @@
                 const r = { ...updatedRecords[dateStr] };
                 
                 if (type !== 'paid_leave') {
-                    r.status = 'work';
-                    r.breakTime = '60';
+                    r.status = 'work'; r.breakTime = '60';
                     if (!r.location) r.location = defaultLocation;
                 }
 
                 switch (type) {
-                    case 'am_leave':
-                        r.start = '13:30'; r.end = '17:15'; r.remarks = '年休(半日)';
-                        break;
-                    case 'pm_leave':
-                        r.start = '08:30'; r.end = '12:15'; r.remarks = '年休(半日)';
-                        break;
+                    case 'am_leave': r.start = '13:30'; r.end = '17:15'; r.remarks = '年休(半日)'; break;
+                    case 'pm_leave': r.start = '08:30'; r.end = '12:15'; r.remarks = '年休(半日)'; break;
                     case 'hourly_leave':
                         if (payload && payload.start && payload.end) {
                             const note = `時間休${payload.hours}h(${payload.start}-${payload.end})`;
@@ -489,27 +463,76 @@
                             const currentEndM = timeToMinutes(r.end || '17:15');
                             const leaveStartM = timeToMinutes(payload.start);
                             const leaveEndM = timeToMinutes(payload.end);
-                            // 遅出
-                            if (leaveStartM <= currentStartM && leaveEndM > currentStartM) {
-                                r.start = payload.end;
-                            }
-                            // 早退
-                            if (leaveEndM >= currentEndM && leaveStartM < currentEndM) {
-                                r.end = payload.start;
-                            }
+                            if (leaveStartM <= currentStartM && leaveEndM > currentStartM) r.start = payload.end;
+                            if (leaveEndM >= currentEndM && leaveStartM < currentEndM) r.end = payload.start;
                         }
                         break;
-                    case 'reset_work':
-                        r.status = 'work'; r.start = '08:30'; r.end = '17:15'; r.remarks = '';
-                        break;
-                    case 'paid_leave':
-                        r.status = 'paid_leave'; r.start = ''; r.end = ''; r.remarks = '';
-                        break;
+                    case 'reset_work': r.status = 'work'; r.start = '08:30'; r.end = '17:15'; r.remarks = ''; break;
+                    case 'paid_leave': r.status = 'paid_leave'; r.start = ''; r.end = ''; r.remarks = ''; break;
                 }
                 updatedRecords[dateStr] = r;
                 setCurrentRecords(updatedRecords);
                 saveData(updatedRecords);
                 setActiveDateForModal(null);
+            };
+
+            // ユーザーリネーム
+            const handleRenameUser = (newName) => {
+                if (!newName || newName === currentUser) {
+                    setIsEditingUser(false);
+                    return;
+                }
+                if (db.users.includes(newName)) {
+                    alert('その名前は既に使用されています。');
+                    return;
+                }
+
+                const newDb = { ...db };
+                // users配列更新
+                newDb.users = newDb.users.map(u => u === currentUser ? newName : u);
+                // settings更新
+                if (newDb.userSettings[currentUser]) {
+                    newDb.userSettings[newName] = newDb.userSettings[currentUser];
+                    delete newDb.userSettings[currentUser];
+                }
+                // data更新
+                if (newDb.data[currentUser]) {
+                    newDb.data[newName] = newDb.data[currentUser];
+                    delete newDb.data[currentUser];
+                }
+
+                setDb(newDb);
+                setCurrentUser(newName);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
+                setIsEditingUser(false);
+            };
+
+            // ユーザー削除
+            const executeDeleteUser = () => {
+                if(!confirm(`本当に「${currentUser}」を削除しますか？\nこの操作は取り消せません。`)) return;
+
+                const newUsers = db.users.filter(u => u !== currentUser);
+                const newData = { ...db.data };
+                delete newData[currentUser];
+                const newSettings = { ...db.userSettings };
+                delete newSettings[currentUser];
+                
+                const newDb = { users: newUsers, data: newData, userSettings: newSettings };
+                setDb(newDb);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
+                
+                if (newUsers.length > 0) {
+                    setCurrentUser(newUsers[0]);
+                } else {
+                    const defaultName = '新規ユーザー';
+                    setDb({ 
+                        users: [defaultName], 
+                        userSettings: { [defaultName]: { fixedOffDay: 5, defaultLocation: '集落センター', paidLeaveDays: 10 } }, 
+                        data: {} 
+                    });
+                    setCurrentUser(defaultName);
+                }
+                setIsEditingUser(false);
             };
 
             const calculateOvertime = (record) => {
@@ -551,47 +574,25 @@
                 XLSX.writeFile(wb, `勤務実績_${currentUser}_${year}年${month}月.xlsx`);
             };
 
-            // --- 集計 & 年休計算 ---
             const stats = useMemo(() => {
                 let workDays = 0;
                 let absentDays = 0;
-                
-                // 年休使用量 (時間単位で集計: 1日=8h, 半日=4h)
                 let usedPaidLeaveHours = 0;
-
                 Object.values(currentRecords).forEach(r => {
                     if (r.status === 'work' || r.status === 'substitute') workDays++;
                     if (r.status === 'absent') absentDays++;
-                    
-                    if (r.status === 'paid_leave') {
-                        usedPaidLeaveHours += 8; // 全日休は8時間
-                    }
+                    if (r.status === 'paid_leave') usedPaidLeaveHours += 8;
                     if (r.remarks) {
-                        if (r.remarks.includes('半日')) {
-                            usedPaidLeaveHours += 4; // 半日休は4時間
-                        }
+                        if (r.remarks.includes('半日')) usedPaidLeaveHours += 4;
                         const match = r.remarks.match(/時間休(\d+)h/);
-                        if (match) {
-                            usedPaidLeaveHours += parseInt(match[1], 10);
-                        }
+                        if (match) usedPaidLeaveHours += parseInt(match[1], 10);
                     }
                 });
-
-                // 残数計算
-                const totalGrantHours = paidLeaveGrantDays * 8; // 付与日数 * 8時間
+                const totalGrantHours = paidLeaveGrantDays * 8;
                 const remainingHoursTotal = totalGrantHours - usedPaidLeaveHours;
-                
-                // 表示用に 日 と 時間 に戻す
                 const remainingDays = Math.floor(remainingHoursTotal / 8);
                 const remainingHours = remainingHoursTotal % 8;
-
-                return { 
-                    workDays, 
-                    absentDays,
-                    usedPaidLeaveHours,
-                    remainingDays,
-                    remainingHours
-                };
+                return { workDays, absentDays, usedPaidLeaveHours, remainingDays, remainingHours };
             }, [currentRecords, paidLeaveGrantDays]);
 
             const daysInMonth = new Date(year, month, 0).getDate();
@@ -604,10 +605,8 @@
                 });
             }
 
-            // --- Render ---
             return (
                 <div className="min-h-screen pb-20 md:pb-10">
-                    {/* Screen Only */}
                     <div className="screen-only">
                         <div className="bg-white shadow p-3 md:p-4 mb-4 sticky top-0 z-20">
                             <div className="max-w-6xl mx-auto">
@@ -620,11 +619,15 @@
                                 </div>
                                 
                                 <div className="bg-gray-50 p-3 rounded border grid grid-cols-1 md:grid-cols-4 gap-3">
+                                    {/* ユーザー選択 & 編集 */}
                                     <div className="flex items-center gap-2">
                                         <select value={currentUser} onChange={(e) => setCurrentUser(e.target.value)} className="border rounded p-2 flex-grow bg-white">
                                             {db.users.map(u => <option key={u} value={u}>{u}</option>)}
                                         </select>
-                                        <button onClick={() => setIsAddingUser(true)} className="bg-gray-200 p-2 rounded text-sm">＋</button>
+                                        <button onClick={() => setIsEditingUser(true)} className="bg-white border text-gray-600 p-2 rounded hover:bg-gray-100" title="ユーザー編集">
+                                            <i className="ph ph-pencil-simple text-lg"></i>
+                                        </button>
+                                        <button onClick={() => setIsAddingUser(true)} className="bg-gray-200 p-2 rounded text-sm text-center min-w-[2rem]">＋</button>
                                     </div>
                                     <div className="flex items-center gap-2 justify-center">
                                         <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="border rounded p-2 w-20 text-center" />
@@ -635,10 +638,10 @@
                                         <span>月</span>
                                     </div>
                                     
-                                    {/* 設定 */}
+                                    {/* 設定エリア */}
                                     <div className="col-span-1 md:col-span-2 flex flex-wrap gap-3 items-center text-xs text-gray-600 justify-end">
                                         <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border">
-                                            <span>当年度 有給付与日数:</span>
+                                            <span>有給付与:</span>
                                             <input type="number" value={paidLeaveGrantDays} onChange={(e) => {
                                                 const val = Number(e.target.value);
                                                 setPaidLeaveGrantDays(val); 
@@ -659,7 +662,6 @@
                                     </div>
                                 </div>
                                 
-                                {/* 年休残数表示 */}
                                 <div className="mt-2 bg-blue-50 border border-blue-200 p-2 rounded flex justify-between items-center text-sm">
                                     <span className="font-bold text-blue-800">年次有給休暇 管理</span>
                                     <div className="flex gap-4">
@@ -675,7 +677,7 @@
 
                                 {isAddingUser && (
                                     <div className="mt-2 p-2 bg-yellow-50 border rounded flex gap-2">
-                                        <input type="text" placeholder="氏名" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="border p-1 text-sm flex-grow" />
+                                        <input type="text" placeholder="新規ユーザー名" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="border p-1 text-sm flex-grow" />
                                         <button onClick={() => {
                                             if(newUserName && !db.users.includes(newUserName)){
                                                 const newDb = {...db, users:[...db.users, newUserName], userSettings:{...db.userSettings, [newUserName]: {fixedOffDay:5, defaultLocation:'集落センター', paidLeaveDays: 10}}};
@@ -734,7 +736,6 @@
                         </div>
                     </div>
 
-                    {/* Print Only */}
                     <div className="print-only">
                         <div className="text-center mb-4">
                             <h2 className="font-bold border-b-2 border-black inline-block pb-1">令和 {year - 2018} 年 {month} 月 勤務実績 ({currentUser})</h2>
@@ -784,11 +785,7 @@
                                     <span>出勤日数</span><span className="font-bold">{stats.workDays} 日</span>
                                 </div>
                                 <div className="flex justify-between border-b border-black border-dashed mb-1">
-                                    <span>年休使用</span>
-                                    <span className="font-bold">
-                                        {Math.floor(stats.usedPaidLeaveHours / 8)}日 
-                                        {stats.usedPaidLeaveHours % 8 > 0 ? ` ${stats.usedPaidLeaveHours % 8}時間` : ''}
-                                    </span>
+                                    <span>年休使用</span><span className="font-bold">{Math.floor(stats.usedPaidLeaveHours / 8)}日 {stats.usedPaidLeaveHours % 8 > 0 ? ` ${stats.usedPaidLeaveHours % 8}時間` : ''}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span>欠勤</span><span className="font-bold">{stats.absentDays} 日</span>
@@ -805,6 +802,14 @@
                         isOpen={!!activeDateForModal} 
                         onClose={() => setActiveDateForModal(null)}
                         onApply={applyLeaveOption}
+                    />
+                    
+                    <UserEditModal 
+                        isOpen={isEditingUser}
+                        onClose={() => setIsEditingUser(false)}
+                        userName={currentUser}
+                        onRename={handleRenameUser}
+                        onDelete={executeDeleteUser}
                     />
                 </div>
             );
