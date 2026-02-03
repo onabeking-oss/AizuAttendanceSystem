@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>会津若松市 勤務実績管理システム</title>
     
     <!-- React & ReactDOM -->
@@ -21,94 +21,86 @@
         body {
             font-family: 'Noto Sans JP', sans-serif;
             background-color: #f3f4f6;
+            -webkit-text-size-adjust: 100%;
         }
 
-        /* 印刷用スタイル */
+        /* 画面表示用ユーティリティ */
+        .screen-only {
+            display: block;
+        }
+
+        /* 印刷用スタイル - 画面表示とは完全に切り離す */
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 5mm 10mm; /* 上下5mm, 左右10mm */
+                margin: 5mm 10mm;
             }
             body {
                 background-color: white;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-                height: auto;
-                overflow: visible;
-                font-size: 10pt; /* ベースフォントサイズを少し下げる */
-            }
-            /* 印刷時は画面上の全ての要素を非表示にする */
-            body * {
-                visibility: hidden;
-            }
-            /* 印刷コンテナとその子要素だけを表示する */
-            .print-container, .print-container * {
-                visibility: visible;
-            }
-            /* 印刷コンテナをページ最上部に絶対配置する */
-            .print-container {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                margin: 0;
-                padding: 0;
-                border: none;
-                box-shadow: none;
-                min-height: auto !important; /* 強制的な高さを解除 */
+                width: 210mm;
+                height: 297mm;
+                overflow: hidden; /* 余計なページが出ないように */
             }
             
-            /* UI要素の非表示 */
-            .no-print {
+            /* 画面操作用UIを全非表示 */
+            .screen-only, .no-print, #root > div > div.screen-only {
                 display: none !important;
             }
 
-            h2 {
-                font-size: 16pt;
-                margin-bottom: 5mm !important;
-                margin-top: 0 !important;
-            }
-
-            table {
-                font-size: 9pt; /* テーブル内の文字を小さく */
-                border: 1px solid black !important;
-                border-collapse: collapse;
+            /* 印刷用コンテナを表示 */
+            .print-only {
+                display: block !important;
+                position: absolute;
+                top: 0;
+                left: 0;
                 width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                visibility: visible;
             }
-            th, td {
-                border: 1px solid black !important;
-                padding: 1px 2px !important; /* パディングを詰める */
-                height: auto !important; /* 高さを自動調整 */
-            }
-            /* 行の高さを制御 */
-            tr {
-                height: 1.2rem !important; 
+            .print-only * {
+                visibility: visible;
             }
 
-            input, textarea, select {
+            /* 印刷用テーブル調整 */
+            table.print-table {
+                width: 100%;
+                border-collapse: collapse;
+                border: 1px solid black;
+                font-size: 9pt;
+                table-layout: fixed;
+            }
+            table.print-table th, table.print-table td {
+                border: 1px solid black;
+                padding: 1px 2px;
+                height: 1.1rem;
+                vertical-align: middle;
+                overflow: hidden;
+                white-space: nowrap;
+            }
+            
+            /* 入力要素のリセット */
+            input, select {
                 border: none;
                 background: transparent;
-                resize: none;
-                padding: 0;
-                margin: 0;
-                font-size: inherit; /* 親のフォントサイズを継承 */
                 width: 100%;
-                /* 印刷時にselectの矢印を消す */
+                font-family: inherit;
+                font-size: inherit;
                 -webkit-appearance: none;
                 -moz-appearance: none;
                 appearance: none;
+                padding: 0;
+                margin: 0;
                 text-align: center;
-                text-align-last: center; 
+                line-height: 1;
             }
-            /* 印刷時のプレースホルダーを消す */
-            input::placeholder {
-                color: transparent;
+            input[type="text"] {
+                text-align: left;
             }
-            
-            /* 押印欄などの調整 */
-            .footer-section {
-                margin-top: 5mm !important;
-            }
+            select::-ms-expand { display: none; }
         }
     </style>
 </head>
@@ -120,18 +112,18 @@
 
         // --- 定数・設定 ---
         const STATUS_OPTIONS = [
-            { value: 'work', label: '出勤', defaultTime: true },
-            { value: 'off_assigned', label: '週休日', defaultTime: false },
-            { value: 'holiday', label: '祝日', defaultTime: false },
-            { value: 'paid_leave', label: '年休', defaultTime: false },
-            { value: 'special_leave', label: '特別休暇', defaultTime: false },
-            { value: 'substitute', label: '振替休日', defaultTime: false },
-            { value: 'absent', label: '欠勤', defaultTime: false },
+            { value: 'work', label: '出勤' },
+            { value: 'off_assigned', label: '週休日' },
+            { value: 'holiday', label: '祝日' },
+            { value: 'paid_leave', label: '年休' },
+            { value: 'special_leave', label: '特別休暇' },
+            { value: 'substitute', label: '振替休日' },
+            { value: 'absent', label: '欠勤' },
         ];
 
         const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
-        // 簡易祝日データ (2025-2026年度)
+        // 簡易祝日データ
         const HOLIDAYS_DATA = {
             '2025-01-01': '元日', '2025-01-13': '成人の日', '2025-02-11': '建国記念の日',
             '2025-02-23': '天皇誕生日', '2025-02-24': '振替休日', '2025-03-20': '春分の日',
@@ -145,8 +137,12 @@
         };
 
         const STORAGE_KEY = 'aizu_kintai_v1';
+        
+        // 勤務可能時間帯設定
+        const WORK_START_HM = "08:30";
+        const WORK_END_HM = "17:15";
 
-        // 15分刻みの時間オプション生成 (00:00 - 23:45)
+        // 時間オプション (00:00 - 23:45)
         const TIME_OPTIONS = [];
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 15) {
@@ -156,7 +152,12 @@
             }
         }
 
-        // 時間計算ユーティリティ
+        // 時間休用の選択肢 (8:30 - 17:15)
+        const LEAVE_TIME_OPTIONS = TIME_OPTIONS.filter(t => {
+            return t >= WORK_START_HM && t <= WORK_END_HM;
+        });
+
+        // --- ユーティリティ ---
         const timeToMinutes = (timeStr) => {
             if (!timeStr) return 0;
             const [h, m] = timeStr.split(':').map(Number);
@@ -170,26 +171,154 @@
             return `${h}:${m.toString().padStart(2, '0')}`;
         };
 
-        // コンポーネント: 時間選択プルダウン
-        const TimeSelect = ({ value, onChange, disabled }) => (
+        const addMinutes = (timeStr, minutes) => {
+            if (!timeStr) return '';
+            let total = timeToMinutes(timeStr) + minutes;
+            if (total < 0) total += 24 * 60;
+            if (total >= 24 * 60) total -= 24 * 60;
+            return minutesToTime(total);
+        };
+
+        // --- コンポーネント ---
+
+        // 時間選択
+        const TimeSelect = ({ value, onChange, disabled, options = TIME_OPTIONS, className = "" }) => (
             <select 
-                className={`w-full text-center outline-none bg-transparent ${disabled ? 'text-gray-300' : ''}`}
+                className={`outline-none bg-transparent w-full ${disabled ? 'text-gray-300' : ''} ${className}`}
                 value={value || ''}
                 onChange={onChange}
                 disabled={disabled}
             >
                 <option value="">-</option>
-                {TIME_OPTIONS.map(t => (
+                {options.map(t => (
                     <option key={t} value={t}>{t}</option>
                 ))}
             </select>
         );
 
+        // 休暇・変更メニューモーダル
+        const LeaveControlModal = ({ isOpen, onClose, onApply }) => {
+            if (!isOpen) return null;
+
+            // 時間休用のState
+            const [hourlyStart, setHourlyStart] = useState('09:00');
+            const [hourlyEnd, setHourlyEnd] = useState('10:00');
+
+            // 時間休計算
+            const calculateHourlyLeave = () => {
+                if (!hourlyStart || !hourlyEnd) return { mins: 0, hours: 0 };
+                const startM = timeToMinutes(hourlyStart);
+                const endM = timeToMinutes(hourlyEnd);
+                let diff = endM - startM;
+                if (diff <= 0) diff = 0;
+                
+                // 1時間単位に切り上げ
+                const hoursDeducted = Math.ceil(diff / 60);
+                
+                return { mins: diff, hours: hoursDeducted };
+            };
+
+            const leaveStats = calculateHourlyLeave();
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="bg-blue-600 text-white p-3 font-bold text-center flex-shrink-0">
+                            休暇・勤務変更
+                        </div>
+                        
+                        <div className="p-4 overflow-y-auto">
+                            {/* 半日休セクション */}
+                            <div className="mb-4 border-b pb-4">
+                                <div className="text-sm font-bold text-gray-700 mb-2 flex items-center">
+                                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded mr-2">半日</span>
+                                    半日休暇 (4時間休)
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button 
+                                        onClick={() => onApply('am_leave')}
+                                        className="bg-blue-50 hover:bg-blue-100 text-blue-800 py-2 rounded border border-blue-200 text-sm"
+                                    >
+                                        <strong>午前半休</strong><br/>
+                                        <span className="text-xs">13:30 出勤</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => onApply('pm_leave')}
+                                        className="bg-blue-50 hover:bg-blue-100 text-blue-800 py-2 rounded border border-blue-200 text-sm"
+                                    >
+                                        <strong>午後半休</strong><br/>
+                                        <span className="text-xs">12:15 退勤</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* 時間休セクション */}
+                            <div className="mb-4 border-b pb-4">
+                                <div className="text-sm font-bold text-gray-700 mb-2 flex items-center">
+                                    <span className="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded mr-2">時間</span>
+                                    時間休暇 (15分単位)
+                                </div>
+                                
+                                <div className="bg-gray-50 p-3 rounded border mb-2">
+                                    <div className="flex items-center justify-center gap-2 mb-2">
+                                        <TimeSelect 
+                                            value={hourlyStart} 
+                                            onChange={(e) => setHourlyStart(e.target.value)} 
+                                            options={LEAVE_TIME_OPTIONS}
+                                            className="border rounded bg-white p-1 w-24 text-center" 
+                                        />
+                                        <span>～</span>
+                                        <TimeSelect 
+                                            value={hourlyEnd} 
+                                            onChange={(e) => setHourlyEnd(e.target.value)} 
+                                            options={LEAVE_TIME_OPTIONS}
+                                            className="border rounded bg-white p-1 w-24 text-center" 
+                                        />
+                                    </div>
+                                    <div className="text-center text-xs text-gray-600">
+                                        休む時間: <strong>{leaveStats.mins}分</strong> <span className="text-gray-400">→</span> 消化年休: <strong className="text-red-600 text-sm">{leaveStats.hours}時間</strong>
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 text-center mt-1">※8:30～17:15の間で入力してください<br/>※1時間単位で切り上げて消化されます</p>
+                                </div>
+
+                                <button 
+                                    onClick={() => onApply('hourly_leave', { start: hourlyStart, end: hourlyEnd, hours: leaveStats.hours })}
+                                    disabled={leaveStats.mins <= 0}
+                                    className={`w-full py-2 rounded font-bold text-sm ${leaveStats.mins > 0 ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                                >
+                                    時間休を適用
+                                </button>
+                            </div>
+
+                            {/* その他セクション */}
+                            <div>
+                                <div className="text-xs text-gray-500 mb-2">その他</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={() => onApply('paid_leave')} className="bg-orange-50 hover:bg-orange-100 text-orange-800 py-2 rounded border border-orange-200 text-xs">全日年休</button>
+                                    <button onClick={() => onApply('reset_work')} className="bg-gray-100 hover:bg-gray-200 text-gray-800 py-2 rounded border border-gray-300 text-xs">通常出勤に戻す</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-50 p-3 text-center border-t flex-shrink-0">
+                            <button onClick={onClose} className="text-gray-600 font-bold px-6 py-2 rounded hover:bg-gray-200 text-sm">キャンセル</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const App = () => {
             // --- State ---
             const [db, setDb] = useState({ 
                 users: ['会津 太郎'], 
-                userSettings: { '会津 太郎': { fixedOffDay: 5, defaultLocation: '集落センター' } }, 
+                userSettings: { 
+                    '会津 太郎': { 
+                        fixedOffDay: 5, 
+                        defaultLocation: '集落センター',
+                        paidLeaveDays: 10 // デフォルト付与日数
+                    } 
+                }, 
                 data: {} 
             });
             
@@ -197,80 +326,64 @@
             const [year, setYear] = useState(2026);
             const [month, setMonth] = useState(1);
             
-            // ユーザー設定用State
+            // Settings State
             const [fixedOffDay, setFixedOffDay] = useState(5);
             const [defaultLocation, setDefaultLocation] = useState('集落センター');
+            const [paidLeaveGrantDays, setPaidLeaveGrantDays] = useState(10);
             
             const [currentRecords, setCurrentRecords] = useState({});
+            
+            // Modal States
             const [isAddingUser, setIsAddingUser] = useState(false);
             const [newUserName, setNewUserName] = useState('');
             const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+            const [activeDateForModal, setActiveDateForModal] = useState(null);
 
             // --- Effects ---
-            
-            // 1. 初期ロード
             useEffect(() => {
                 const saved = localStorage.getItem(STORAGE_KEY);
                 if (saved) {
                     try {
                         const parsed = JSON.parse(saved);
                         if (parsed.users && Array.isArray(parsed.users)) {
-                            // 旧データ形式への対応: userSettingsがない場合など
-                            if (!parsed.userSettings) {
-                                parsed.userSettings = {};
-                                parsed.users.forEach(u => {
-                                    parsed.userSettings[u] = { fixedOffDay: 5, defaultLocation: '集落センター' };
-                                });
-                            } else {
-                                // defaultLocationがない場合の対応
-                                parsed.users.forEach(u => {
-                                    if (!parsed.userSettings[u]) {
-                                        parsed.userSettings[u] = { fixedOffDay: 5, defaultLocation: '集落センター' };
-                                    } else if (!parsed.userSettings[u].defaultLocation) {
-                                        parsed.userSettings[u].defaultLocation = '集落センター';
-                                    }
-                                });
-                            }
+                            if (!parsed.userSettings) parsed.userSettings = {};
+                            parsed.users.forEach(u => {
+                                if (!parsed.userSettings[u]) parsed.userSettings[u] = {};
+                                // Default settings
+                                const settings = parsed.userSettings[u];
+                                if (settings.fixedOffDay === undefined) settings.fixedOffDay = 5;
+                                if (!settings.defaultLocation) settings.defaultLocation = '集落センター';
+                                if (settings.paidLeaveDays === undefined) settings.paidLeaveDays = 10;
+                            });
                             setDb(parsed);
-                            if (parsed.users.length > 0) {
-                                setCurrentUser(parsed.users[0]);
-                            }
+                            if (parsed.users.length > 0) setCurrentUser(parsed.users[0]);
                         }
                     } catch (e) {
-                        console.error("データ読み込みエラー", e);
+                        console.error("Data load error", e);
                     }
                 }
             }, []);
 
-            // 2. ユーザー切り替え時の設定反映
             useEffect(() => {
                 const settings = db.userSettings?.[currentUser];
                 if (settings) {
                     setFixedOffDay(settings.fixedOffDay !== undefined ? settings.fixedOffDay : 5);
                     setDefaultLocation(settings.defaultLocation || '集落センター');
-                } else {
-                    setFixedOffDay(5);
-                    setDefaultLocation('集落センター');
+                    setPaidLeaveGrantDays(settings.paidLeaveDays !== undefined ? settings.paidLeaveDays : 10);
                 }
             }, [currentUser, db.userSettings]);
 
-            // 3. データ生成 (ユーザー、年月、基本設定変更時)
             useEffect(() => {
                 const daysInMonth = new Date(year, month, 0).getDate();
                 const existingUserData = db.data[currentUser] || {};
                 const newRecords = {};
-
-                // ユーザー設定からデフォルト値を取得
                 const userDefaultLoc = db.userSettings?.[currentUser]?.defaultLocation || '集落センター';
 
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                    
                     if (existingUserData[dateStr]) {
-                        // 既存データがある場合はそのまま使用
                         newRecords[dateStr] = existingUserData[dateStr];
                     } else {
-                        // 新規データ作成
                         const dateObj = new Date(year, month - 1, d);
                         const dayOfWeek = dateObj.getDay();
                         
@@ -296,7 +409,7 @@
                             end,
                             breakTime,
                             content: '',
-                            location: userDefaultLoc, // デフォルト場所を設定
+                            location: userDefaultLoc,
                             remarks: HOLIDAYS_DATA[dateStr] || ''
                         };
                     }
@@ -304,31 +417,14 @@
                 setCurrentRecords(newRecords);
             }, [year, month, currentUser, fixedOffDay, defaultLocation, db.users]);
 
+            // --- Logic ---
             const saveData = (updatedRecords) => {
                 const newDb = {
                     ...db,
-                    data: {
-                        ...db.data,
-                        [currentUser]: {
-                            ...(db.data[currentUser] || {}),
-                            ...updatedRecords
-                        }
-                    }
+                    data: { ...db.data, [currentUser]: { ...(db.data[currentUser] || {}), ...updatedRecords } }
                 };
                 setDb(newDb);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
-            };
-
-            // --- Handlers ---
-            const handleFixedOffDayChange = (newDay) => {
-                const dayNum = Number(newDay);
-                setFixedOffDay(dayNum);
-                updateUserSettings({ fixedOffDay: dayNum });
-            };
-
-            const handleDefaultLocationChange = (newLoc) => {
-                setDefaultLocation(newLoc);
-                updateUserSettings({ defaultLocation: newLoc });
             };
 
             const updateUserSettings = (newSettings) => {
@@ -336,10 +432,7 @@
                     ...db,
                     userSettings: {
                         ...db.userSettings,
-                        [currentUser]: {
-                            ...(db.userSettings?.[currentUser] || {}),
-                            ...newSettings
-                        }
+                        [currentUser]: { ...(db.userSettings?.[currentUser] || {}), ...newSettings }
                     }
                 };
                 setDb(newDb);
@@ -356,10 +449,7 @@
                         currentRecord.start = '08:30';
                         currentRecord.end = '17:15';
                         currentRecord.breakTime = '60';
-                        // ステータスが出勤に戻ったとき、場所が空ならデフォルトを入れる配慮
-                        if (!currentRecord.location) {
-                            currentRecord.location = defaultLocation;
-                        }
+                        if (!currentRecord.location) currentRecord.location = defaultLocation;
                     } else {
                         currentRecord.start = '';
                         currentRecord.end = '';
@@ -372,127 +462,137 @@
                 saveData(updatedRecords);
             };
 
-            const handleAddUser = () => {
-                if (newUserName && !db.users.includes(newUserName)) {
-                    const newDb = { 
-                        ...db, 
-                        users: [...db.users, newUserName],
-                        userSettings: {
-                            ...db.userSettings,
-                            [newUserName]: { fixedOffDay: 5, defaultLocation: '集落センター' }
+            const applyLeaveOption = (type, payload) => {
+                const dateStr = activeDateForModal;
+                if (!dateStr) return;
+                const updatedRecords = { ...currentRecords };
+                const r = { ...updatedRecords[dateStr] };
+                
+                if (type !== 'paid_leave') {
+                    r.status = 'work';
+                    r.breakTime = '60';
+                    if (!r.location) r.location = defaultLocation;
+                }
+
+                switch (type) {
+                    case 'am_leave':
+                        r.start = '13:30'; r.end = '17:15'; r.remarks = '年休(半日)';
+                        break;
+                    case 'pm_leave':
+                        r.start = '08:30'; r.end = '12:15'; r.remarks = '年休(半日)';
+                        break;
+                    case 'hourly_leave':
+                        if (payload && payload.start && payload.end) {
+                            const note = `時間休${payload.hours}h(${payload.start}-${payload.end})`;
+                            r.remarks = r.remarks ? `${r.remarks} ${note}` : note;
+                            const currentStartM = timeToMinutes(r.start || '08:30');
+                            const currentEndM = timeToMinutes(r.end || '17:15');
+                            const leaveStartM = timeToMinutes(payload.start);
+                            const leaveEndM = timeToMinutes(payload.end);
+                            // 遅出
+                            if (leaveStartM <= currentStartM && leaveEndM > currentStartM) {
+                                r.start = payload.end;
+                            }
+                            // 早退
+                            if (leaveEndM >= currentEndM && leaveStartM < currentEndM) {
+                                r.end = payload.start;
+                            }
                         }
-                    };
-                    setDb(newDb);
-                    setCurrentUser(newUserName);
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
-                    setNewUserName('');
-                    setIsAddingUser(false);
+                        break;
+                    case 'reset_work':
+                        r.status = 'work'; r.start = '08:30'; r.end = '17:15'; r.remarks = '';
+                        break;
+                    case 'paid_leave':
+                        r.status = 'paid_leave'; r.start = ''; r.end = ''; r.remarks = '';
+                        break;
                 }
-            };
-
-            const executeDeleteUser = () => {
-                const newUsers = db.users.filter(u => u !== currentUser);
-                const newData = { ...db.data };
-                delete newData[currentUser];
-                const newSettings = { ...db.userSettings };
-                delete newSettings[currentUser];
-                
-                const newDb = { users: newUsers, data: newData, userSettings: newSettings };
-                setDb(newDb);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb));
-                
-                if (newUsers.length > 0) {
-                    setCurrentUser(newUsers[0]);
-                } else {
-                    const defaultName = '新規ユーザー';
-                    setDb({ 
-                        users: [defaultName], 
-                        userSettings: { [defaultName]: { fixedOffDay: 5, defaultLocation: '集落センター' } }, 
-                        data: {} 
-                    });
-                    setCurrentUser(defaultName);
-                }
-                setShowDeleteConfirm(false);
-            };
-
-            const handlePrint = () => {
-                try {
-                    window.print();
-                } catch (e) {
-                    alert("印刷ダイアログが開けませんでした。\nキーボードの [Ctrl] + [P] (MacはCommand+P) を押して印刷してください。");
-                }
+                updatedRecords[dateStr] = r;
+                setCurrentRecords(updatedRecords);
+                saveData(updatedRecords);
+                setActiveDateForModal(null);
             };
 
             const calculateOvertime = (record) => {
                 if (record.status !== 'work' && record.status !== 'substitute') return '';
                 if (!record.start || !record.end) return '';
-
                 const startM = timeToMinutes(record.start);
                 const endM = timeToMinutes(record.end);
                 const breakM = parseInt(record.breakTime || 0);
                 const workM = endM - startM - breakM;
-                const standardM = 465; // 7h45m
-
+                const standardM = 465; 
                 const overtimeM = workM - standardM;
                 return overtimeM > 0 ? minutesToTime(overtimeM) : '';
             };
 
+            const handlePrint = () => { try { window.print(); } catch (e) { alert("Ctrl + P (Command + P) で印刷してください。"); } };
+
             const exportToExcel = () => {
                 const daysInMonth = new Date(year, month, 0).getDate();
                 const data = [];
-
-                data.push(['日付', '曜日', '業務内容', '勤務場所', '出勤', '退勤', '時間外', '備考', '詳細ステータス']);
-
+                data.push(['日付', '曜日', '業務内容', '勤務場所', '出勤', '退勤', '時間外', '備考', 'ステータス']);
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     const r = currentRecords[dateStr] || {};
                     const dateObj = new Date(year, month - 1, d);
                     const weekDay = WEEKDAYS[dateObj.getDay()];
-                    
                     let displayRemarks = r.remarks || '';
                     if(r.status === 'paid_leave') displayRemarks = "年休 " + displayRemarks;
                     if(r.status === 'substitute') displayRemarks = "振替休日 " + displayRemarks;
-                    if(r.status === 'off_assigned') displayRemarks = "週休日";
-                    if(r.status === 'holiday') displayRemarks = "祝日";
-
                     data.push([
-                        `${month}/${d}`,
-                        weekDay,
-                        r.content || '',
-                        r.location || '',
-                        r.start || '',
-                        r.end || '',
-                        calculateOvertime(r),
-                        displayRemarks,
+                        `${month}/${d}`, weekDay, r.content || '', r.location || '',
+                        r.start || '', r.end || '', calculateOvertime(r), displayRemarks,
                         STATUS_OPTIONS.find(o => o.value === r.status)?.label || r.status
                     ]);
                 }
-
-                const workDays = Object.values(currentRecords).filter(r => r.status === 'work' || r.status === 'substitute').length;
-                data.push([]);
-                data.push(['合計', '', '', '', `出勤日数: ${workDays}日`]);
-
                 const wb = XLSX.utils.book_new();
                 const ws = XLSX.utils.aoa_to_sheet(data);
-
-                ws['!cols'] = [
-                    { wch: 10 }, { wch: 5 }, { wch: 30 }, { wch: 15 }, 
-                    { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 10 }
-                ];
-
+                ws['!cols'] = [{ wch: 10 }, { wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 10 }];
                 XLSX.utils.book_append_sheet(wb, ws, `${year}年${month}月`);
                 XLSX.writeFile(wb, `勤務実績_${currentUser}_${year}年${month}月.xlsx`);
             };
 
-            const summary = useMemo(() => {
-                let workDays = 0, paidLeaveDays = 0, absentDays = 0;
+            // --- 集計 & 年休計算 ---
+            const stats = useMemo(() => {
+                let workDays = 0;
+                let absentDays = 0;
+                
+                // 年休使用量 (時間単位で集計: 1日=8h, 半日=4h)
+                let usedPaidLeaveHours = 0;
+
                 Object.values(currentRecords).forEach(r => {
                     if (r.status === 'work' || r.status === 'substitute') workDays++;
-                    if (r.status === 'paid_leave') paidLeaveDays++;
                     if (r.status === 'absent') absentDays++;
+                    
+                    if (r.status === 'paid_leave') {
+                        usedPaidLeaveHours += 8; // 全日休は8時間
+                    }
+                    if (r.remarks) {
+                        if (r.remarks.includes('半日')) {
+                            usedPaidLeaveHours += 4; // 半日休は4時間
+                        }
+                        const match = r.remarks.match(/時間休(\d+)h/);
+                        if (match) {
+                            usedPaidLeaveHours += parseInt(match[1], 10);
+                        }
+                    }
                 });
-                return { workDays, paidLeaveDays, absentDays };
-            }, [currentRecords]);
+
+                // 残数計算
+                const totalGrantHours = paidLeaveGrantDays * 8; // 付与日数 * 8時間
+                const remainingHoursTotal = totalGrantHours - usedPaidLeaveHours;
+                
+                // 表示用に 日 と 時間 に戻す
+                const remainingDays = Math.floor(remainingHoursTotal / 8);
+                const remainingHours = remainingHoursTotal % 8;
+
+                return { 
+                    workDays, 
+                    absentDays,
+                    usedPaidLeaveHours,
+                    remainingDays,
+                    remainingHours
+                };
+            }, [currentRecords, paidLeaveGrantDays]);
 
             const daysInMonth = new Date(year, month, 0).getDate();
             const dateList = [];
@@ -504,142 +604,152 @@
                 });
             }
 
+            // --- Render ---
             return (
-                <div className="min-h-screen pb-10">
-                    <div className="no-print bg-white shadow p-4 mb-6 sticky top-0 z-10">
-                        <div className="max-w-6xl mx-auto space-y-4">
-                            <div className="flex flex-wrap gap-4 items-center justify-between">
-                                <h1 className="text-xl font-bold text-gray-800">会津若松市 勤務実績管理システム</h1>
-                                <div className="flex gap-2">
-                                    <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2 text-sm">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                                        Excel出力
-                                    </button>
-                                    <button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2 text-sm">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                                        印刷 / PDF保存
-                                    </button>
+                <div className="min-h-screen pb-20 md:pb-10">
+                    {/* Screen Only */}
+                    <div className="screen-only">
+                        <div className="bg-white shadow p-3 md:p-4 mb-4 sticky top-0 z-20">
+                            <div className="max-w-6xl mx-auto">
+                                <div className="flex flex-col md:flex-row gap-3 justify-between items-center mb-3">
+                                    <h1 className="text-lg md:text-xl font-bold text-gray-800">勤務実績管理システム</h1>
+                                    <div className="flex gap-2 w-full md:w-auto">
+                                        <button onClick={exportToExcel} className="flex-1 md:flex-none bg-green-600 text-white font-bold py-2 px-4 rounded text-sm shadow">Excel</button>
+                                        <button onClick={handlePrint} className="flex-1 md:flex-none bg-blue-600 text-white font-bold py-2 px-4 rounded text-sm shadow">印刷/PDF</button>
+                                    </div>
                                 </div>
-                            </div>
-                            
-                            <p className="text-xs text-red-600 text-right no-print">
-                                ※「印刷 / PDF保存」ボタンが反応しない場合は、キーボードの <strong>Ctrl + P</strong> (Macは Command + P) を押してください。
-                            </p>
-
-                            <div className="flex flex-wrap gap-4 items-start bg-gray-50 p-3 rounded border">
-                                <div className="border-r pr-4 mr-2 relative">
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">ユーザー選択</label>
-                                    <div className="flex gap-2 items-center">
-                                        <select 
-                                            value={currentUser} 
-                                            onChange={(e) => setCurrentUser(e.target.value)}
-                                            className="border rounded p-1 w-40"
-                                        >
+                                
+                                <div className="bg-gray-50 p-3 rounded border grid grid-cols-1 md:grid-cols-4 gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <select value={currentUser} onChange={(e) => setCurrentUser(e.target.value)} className="border rounded p-2 flex-grow bg-white">
                                             {db.users.map(u => <option key={u} value={u}>{u}</option>)}
                                         </select>
-                                        <button onClick={() => setIsAddingUser(true)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">＋新規</button>
-                                        <button onClick={() => setShowDeleteConfirm(true)} className="text-xs text-red-500 hover:underline ml-1" title="現在のユーザーを削除">削除</button>
+                                        <button onClick={() => setIsAddingUser(true)} className="bg-gray-200 p-2 rounded text-sm">＋</button>
                                     </div>
-                                    {isAddingUser && (
-                                        <div className="mt-2 flex gap-1 absolute top-full left-0 bg-white p-2 border shadow-lg z-20 rounded w-60">
-                                            <input 
-                                                type="text" 
-                                                placeholder="氏名を入力" 
-                                                className="border rounded p-1 text-sm w-32"
-                                                value={newUserName}
-                                                onChange={(e) => setNewUserName(e.target.value)}
-                                            />
-                                            <button onClick={handleAddUser} className="bg-blue-500 text-white px-2 py-1 rounded text-xs whitespace-nowrap">追加</button>
-                                            <button onClick={() => setIsAddingUser(false)} className="text-gray-500 px-1 text-xs">✕</button>
-                                        </div>
-                                    )}
-                                    {showDeleteConfirm && (
-                                        <div className="mt-2 absolute top-full left-0 bg-white p-3 border border-red-200 shadow-xl z-30 rounded w-64">
-                                            <p className="text-xs font-bold text-red-600 mb-2">
-                                                「{currentUser}」を削除しますか？<br/>
-                                                <span className="font-normal text-gray-600">この操作は取り消せません。</span>
-                                            </p>
-                                            <div className="flex justify-end gap-2">
-                                                <button 
-                                                    onClick={() => setShowDeleteConfirm(false)} 
-                                                    className="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-xs"
-                                                >
-                                                    キャンセル
-                                                </button>
-                                                <button 
-                                                    onClick={executeDeleteUser} 
-                                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs"
-                                                >
-                                                    削除実行
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">対象年月</label>
-                                    <div className="flex gap-1 items-center">
-                                        <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="border rounded p-1 w-16" />
+                                    <div className="flex items-center gap-2 justify-center">
+                                        <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="border rounded p-2 w-20 text-center" />
                                         <span>年</span>
-                                        <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="border rounded p-1 w-14">
-                                            {[...Array(12)].map((_, i) => (
-                                                <option key={i+1} value={i+1}>{i+1}</option>
-                                            ))}
+                                        <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="border rounded p-2 w-16 bg-white">
+                                            {[...Array(12)].map((_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}
                                         </select>
                                         <span>月</span>
                                     </div>
+                                    
+                                    {/* 設定 */}
+                                    <div className="col-span-1 md:col-span-2 flex flex-wrap gap-3 items-center text-xs text-gray-600 justify-end">
+                                        <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border">
+                                            <span>当年度 有給付与日数:</span>
+                                            <input type="number" value={paidLeaveGrantDays} onChange={(e) => {
+                                                const val = Number(e.target.value);
+                                                setPaidLeaveGrantDays(val); 
+                                                updateUserSettings({paidLeaveDays: val});
+                                            }} className="border rounded p-1 w-12 text-center" />
+                                            <span>日</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span>週休:</span>
+                                            <select value={fixedOffDay} onChange={(e) => {setFixedOffDay(Number(e.target.value)); updateUserSettings({fixedOffDay: Number(e.target.value)})}} className="border rounded p-1">
+                                                {WEEKDAYS.map((w, i) => i > 0 && i < 6 ? <option key={i} value={i}>{w}</option> : null)}
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span>場所:</span>
+                                            <input type="text" value={defaultLocation} onChange={(e) => {setDefaultLocation(e.target.value); updateUserSettings({defaultLocation: e.target.value})}} className="border rounded p-1 w-20" />
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* 年休残数表示 */}
+                                <div className="mt-2 bg-blue-50 border border-blue-200 p-2 rounded flex justify-between items-center text-sm">
+                                    <span className="font-bold text-blue-800">年次有給休暇 管理</span>
+                                    <div className="flex gap-4">
+                                        <span>付与: <strong>{paidLeaveGrantDays}日</strong></span>
+                                        <span className="text-gray-400">→</span>
+                                        <span>使用: <strong>{Math.floor(stats.usedPaidLeaveHours / 8)}日 {stats.usedPaidLeaveHours % 8}時間</strong></span>
+                                        <span className="text-gray-400">→</span>
+                                        <span className="text-red-600 font-bold bg-white px-2 rounded border border-red-200">
+                                            残: {stats.remainingDays}日 {stats.remainingHours}時間
+                                        </span>
+                                    </div>
                                 </div>
 
-                                {/* 設定エリア */}
-                                <div className="border-l pl-4 flex gap-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 mb-1">週休日 (土日以外)</label>
-                                        <select value={fixedOffDay} onChange={(e) => handleFixedOffDayChange(e.target.value)} className="border rounded p-1 w-24">
-                                            <option value={1}>月曜日</option>
-                                            <option value={2}>火曜日</option>
-                                            <option value={3}>水曜日</option>
-                                            <option value={4}>木曜日</option>
-                                            <option value={5}>金曜日</option>
-                                        </select>
+                                {isAddingUser && (
+                                    <div className="mt-2 p-2 bg-yellow-50 border rounded flex gap-2">
+                                        <input type="text" placeholder="氏名" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="border p-1 text-sm flex-grow" />
+                                        <button onClick={() => {
+                                            if(newUserName && !db.users.includes(newUserName)){
+                                                const newDb = {...db, users:[...db.users, newUserName], userSettings:{...db.userSettings, [newUserName]: {fixedOffDay:5, defaultLocation:'集落センター', paidLeaveDays: 10}}};
+                                                setDb(newDb); setCurrentUser(newUserName); localStorage.setItem(STORAGE_KEY, JSON.stringify(newDb)); setNewUserName(''); setIsAddingUser(false);
+                                            }
+                                        }} className="bg-blue-500 text-white px-3 rounded text-sm">追加</button>
+                                        <button onClick={() => setIsAddingUser(false)} className="text-gray-500 text-sm">✕</button>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 mb-1">デフォルト勤務場所</label>
-                                        <input 
-                                            type="text" 
-                                            value={defaultLocation} 
-                                            onChange={(e) => handleDefaultLocationChange(e.target.value)} 
-                                            className="border rounded p-1 w-32" 
-                                            placeholder="例: 集落センター"
-                                        />
-                                    </div>
-                                </div>
+                                )}
                             </div>
-                            
-                            <p className="text-xs text-gray-500 text-center">
-                                データはブラウザ内(LocalStorage)に自動保存されます。「Excel出力」でGoogleスプレッドシート等で使えるファイルをダウンロードできます。
-                            </p>
+                        </div>
+
+                        {/* List View */}
+                        <div className="max-w-4xl mx-auto px-2">
+                            {dateList.map(({ d, dateStr, dayOfWeek }) => {
+                                const record = currentRecords[dateStr] || {};
+                                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                                const isHoliday = record.status === 'holiday';
+                                const colorClass = (dayOfWeek === 0 || isHoliday) ? "text-red-600 bg-red-50" : (dayOfWeek === 6 ? "text-blue-600 bg-blue-50" : "bg-white");
+                                const isWorkLike = record.status === 'work' || record.status === 'substitute';
+
+                                return (
+                                    <div key={dateStr} className={`mb-3 rounded-lg shadow-sm border overflow-hidden ${colorClass}`}>
+                                        <div className="flex items-center justify-between p-2 border-b bg-opacity-50 bg-gray-100">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-bold text-lg w-8 text-center`}>{d}</span>
+                                                <span className="text-sm font-bold">({WEEKDAYS[dayOfWeek]})</span>
+                                                {record.remarks && <span className="text-xs bg-yellow-200 px-1 rounded truncate max-w-[150px]">{record.remarks}</span>}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => setActiveDateForModal(dateStr)} className="text-xs bg-white border border-blue-300 text-blue-600 px-2 py-1 rounded hover:bg-blue-50">
+                                                    休暇・変更
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                                            <div className="md:col-span-4 space-y-2">
+                                                <select className="border rounded text-sm p-1 w-full bg-white" value={record.status} onChange={(e) => handleRecordChange(dateStr, 'status', e.target.value)}>
+                                                    {STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                                </select>
+                                                <input type="text" className="border rounded text-sm p-1 w-full" placeholder={isWorkLike ? "業務内容" : ""} value={record.content || ''} onChange={(e) => handleRecordChange(dateStr, 'content', e.target.value)} />
+                                            </div>
+                                            <div className="md:col-span-5 grid grid-cols-3 gap-2 text-center">
+                                                <div><label className="text-[10px] text-gray-500 block">場所</label>{isWorkLike ? <input type="text" className="border-b text-sm w-full text-center" value={record.location || ''} onChange={(e) => handleRecordChange(dateStr, 'location', e.target.value)} placeholder={defaultLocation} /> : <span className="text-gray-300">-</span>}</div>
+                                                <div><label className="text-[10px] text-gray-500 block">出勤</label>{isWorkLike ? <TimeSelect value={record.start} onChange={(e) => handleRecordChange(dateStr, 'start', e.target.value)} className="border rounded p-1 text-sm" /> : <span className="text-gray-300">-</span>}</div>
+                                                <div><label className="text-[10px] text-gray-500 block">退勤</label>{isWorkLike ? <TimeSelect value={record.end} onChange={(e) => handleRecordChange(dateStr, 'end', e.target.value)} className="border rounded p-1 text-sm" /> : <span className="text-gray-300">-</span>}</div>
+                                            </div>
+                                            <div className="md:col-span-3 flex md:flex-col gap-2 justify-between md:justify-center">
+                                                <div className="text-xs text-center"><span className="md:hidden mr-1">時間外:</span><span className="font-mono">{calculateOvertime(record) || '--:--'}</span></div>
+                                                <input type="text" className="border-b text-xs flex-grow md:w-full" placeholder="備考" value={record.remarks || ''} onChange={(e) => handleRecordChange(dateStr, 'remarks', e.target.value)} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
-                    <div className="print-container bg-white max-w-[210mm] mx-auto p-8 shadow-lg min-h-[297mm]">
-                        <div className="text-center mb-6">
-                            <h2 className="text-xl font-bold border-b-2 border-black inline-block pb-1">
-                                令和 {year - 2018} 年 {month} 月 勤務実績 ({currentUser})
-                            </h2>
+                    {/* Print Only */}
+                    <div className="print-only">
+                        <div className="text-center mb-4">
+                            <h2 className="font-bold border-b-2 border-black inline-block pb-1">令和 {year - 2018} 年 {month} 月 勤務実績 ({currentUser})</h2>
                         </div>
-
-                        <table className="w-full text-sm border-collapse border border-black">
+                        <table className="print-table">
                             <thead>
-                                <tr className="bg-gray-100 text-center h-10">
-                                    <th className="border border-black w-10">曜<br/>日</th>
-                                    <th className="border border-black w-8">日</th>
-                                    <th className="border border-black">業務内容</th>
-                                    <th className="border border-black w-32">勤務場所</th>
-                                    <th className="border border-black w-16">出勤</th>
-                                    <th className="border border-black w-16">退勤</th>
-                                    <th className="border border-black w-14">時間外</th>
-                                    <th className="border border-black w-24">備考</th>
+                                <tr className="bg-gray-100 text-center">
+                                    <th className="w-8">曜<br/>日</th>
+                                    <th className="w-8">日</th>
+                                    <th>業務内容</th>
+                                    <th className="w-24">勤務場所</th>
+                                    <th className="w-14">出勤</th>
+                                    <th className="w-14">退勤</th>
+                                    <th className="w-12">時間外</th>
+                                    <th className="w-24">備考</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -647,119 +757,55 @@
                                     const record = currentRecords[dateStr] || {};
                                     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
                                     const isHoliday = record.status === 'holiday';
-                                    
-                                    const rowClass = (isWeekend || isHoliday) ? "bg-gray-50" : "";
-                                    const textClass = (dayOfWeek === 0 || isHoliday) ? "text-red-600" : (dayOfWeek === 6 ? "text-blue-600" : "text-black");
-
+                                    const isWorkLike = record.status === 'work' || record.status === 'substitute';
                                     let displayRemarks = record.remarks || '';
-                                    if(record.status === 'paid_leave') displayRemarks = "年休 " + displayRemarks;
-                                    if(record.status === 'substitute') displayRemarks = "振替休日 " + displayRemarks;
+                                    if(record.status === 'paid_leave' && !displayRemarks.includes('年休')) displayRemarks = "年休 " + displayRemarks;
+                                    if(record.status === 'substitute' && !displayRemarks.includes('振替')) displayRemarks = "振替休日 " + displayRemarks;
                                     if(record.status === 'off_assigned') displayRemarks = "週休日";
                                     if(record.status === 'holiday') displayRemarks = "祝日";
-
-                                    const isWorkLike = record.status === 'work' || record.status === 'substitute';
-
                                     return (
-                                        <tr key={dateStr} className={`h-10 ${rowClass}`}>
-                                            <td className={`border border-black text-center font-bold ${textClass}`}>
-                                                {WEEKDAYS[dayOfWeek]}
-                                            </td>
-                                            <td className="border border-black text-center font-bold">
-                                                {d}
-                                            </td>
-                                            <td className="border border-black px-1 align-middle">
-                                                <input 
-                                                    type="text" 
-                                                    className="w-full h-full outline-none bg-transparent"
-                                                    value={record.content || ''}
-                                                    onChange={(e) => handleRecordChange(dateStr, 'content', e.target.value)}
-                                                    placeholder={record.status === 'work' ? '業務内容を入力' : ''}
-                                                />
-                                            </td>
-                                            {/* 勤務場所: 出勤日のみ表示・編集可能 */}
-                                            <td className="border border-black px-1 align-middle">
-                                                {isWorkLike ? (
-                                                    <input 
-                                                        type="text" 
-                                                        className="w-full h-full outline-none bg-transparent text-center"
-                                                        value={record.location || ''}
-                                                        onChange={(e) => handleRecordChange(dateStr, 'location', e.target.value)}
-                                                        placeholder={defaultLocation}
-                                                    />
-                                                ) : <span className="block h-full w-full"></span>}
-                                            </td>
-                                            {/* 出勤 (Select) */}
-                                            <td className="border border-black text-center align-middle">
-                                                <TimeSelect 
-                                                    value={record.start} 
-                                                    onChange={(e) => handleRecordChange(dateStr, 'start', e.target.value)}
-                                                    disabled={!isWorkLike}
-                                                />
-                                            </td>
-                                            {/* 退勤 (Select) */}
-                                            <td className="border border-black text-center align-middle">
-                                                <TimeSelect 
-                                                    value={record.end} 
-                                                    onChange={(e) => handleRecordChange(dateStr, 'end', e.target.value)}
-                                                    disabled={!isWorkLike}
-                                                />
-                                            </td>
-                                            <td className="border border-black text-center align-middle">
-                                                {calculateOvertime(record)}
-                                            </td>
-                                            <td className="border border-black px-1 align-middle relative group">
-                                                <div className="print-only text-xs">{displayRemarks}</div>
-                                                <div className="no-print flex flex-col gap-1">
-                                                    <select 
-                                                        className="text-xs border rounded w-full mb-1"
-                                                        value={record.status}
-                                                        onChange={(e) => handleRecordChange(dateStr, 'status', e.target.value)}
-                                                    >
-                                                        {STATUS_OPTIONS.map(opt => (
-                                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                        ))}
-                                                    </select>
-                                                    <input 
-                                                        type="text" 
-                                                        className="text-xs border-b w-full outline-none placeholder-gray-300"
-                                                        placeholder="備考追記..."
-                                                        value={record.remarks || ''}
-                                                        onChange={(e) => handleRecordChange(dateStr, 'remarks', e.target.value)}
-                                                    />
-                                                </div>
-                                            </td>
+                                        <tr key={dateStr}>
+                                            <td className={`text-center font-bold ${dayOfWeek === 0 || isHoliday ? 'text-black' : 'text-black'}`}>{WEEKDAYS[dayOfWeek]}</td>
+                                            <td className="text-center font-bold">{d}</td>
+                                            <td>{record.content}</td>
+                                            <td className="text-center">{isWorkLike ? (record.location || defaultLocation) : ''}</td>
+                                            <td className="text-center">{isWorkLike ? record.start : ''}</td>
+                                            <td className="text-center">{isWorkLike ? record.end : ''}</td>
+                                            <td className="text-center">{calculateOvertime(record)}</td>
+                                            <td className="text-xs">{displayRemarks}</td>
                                         </tr>
                                     );
                                 })}
                             </tbody>
                         </table>
-
-                        <div className="footer-section mt-4 flex justify-between items-start text-sm">
+                        <div className="mt-4 flex justify-between items-start text-xs">
                             <div className="border border-black p-2 w-1/3">
                                 <div className="flex justify-between border-b border-black border-dashed mb-1">
-                                    <span>出勤日数</span>
-                                    <span className="font-bold">{summary.workDays} 日</span>
+                                    <span>出勤日数</span><span className="font-bold">{stats.workDays} 日</span>
                                 </div>
                                 <div className="flex justify-between border-b border-black border-dashed mb-1">
-                                    <span>年休取得</span>
-                                    <span className="font-bold">{summary.paidLeaveDays} 日</span>
+                                    <span>年休使用</span>
+                                    <span className="font-bold">
+                                        {Math.floor(stats.usedPaidLeaveHours / 8)}日 
+                                        {stats.usedPaidLeaveHours % 8 > 0 ? ` ${stats.usedPaidLeaveHours % 8}時間` : ''}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span>欠勤</span>
-                                    <span className="font-bold">{summary.absentDays} 日</span>
+                                    <span>欠勤</span><span className="font-bold">{stats.absentDays} 日</span>
                                 </div>
                             </div>
-
-                            <div className="w-1/2 text-xs leading-relaxed border border-gray-300 p-2 text-gray-600">
-                                <strong>【勤務条件確認】</strong><br/>
-                                ・週勤務日数: 4日<br/>
-                                ・通常勤務時間: 8:30 ～ 17:15 (7時間45分)<br/>
-                                ・休憩時間: 12:00 ～ 13:00 (60分)<br/>
-                                ・週休日: 土曜、日曜、他1日({WEEKDAYS[fixedOffDay]}曜日)<br/>
+                            <div className="w-1/2 leading-relaxed border border-gray-300 p-2">
+                                <strong>【年休管理】</strong> 付与: {paidLeaveGrantDays}日 → 残: <strong>{stats.remainingDays}日 {stats.remainingHours}時間</strong><br/>
+                                <strong>【勤務条件】</strong> 週4日 / 8:30～17:15 (休60分)
                             </div>
                         </div>
-
                     </div>
+
+                    <LeaveControlModal 
+                        isOpen={!!activeDateForModal} 
+                        onClose={() => setActiveDateForModal(null)}
+                        onApply={applyLeaveOption}
+                    />
                 </div>
             );
         };
