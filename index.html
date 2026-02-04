@@ -60,11 +60,12 @@
             /* 印刷コンテナを表示 */
             .print-only {
                 display: block !important;
-                position: static; /* 通常のフローに戻すことでセンタリングを有効化 */
+                position: relative; /* フロー配置に戻す */
                 width: 100%;
-                max-width: 190mm; /* A4幅(210mm) - 左右マージン(10mm*2) */
+                max-width: 100%;
                 margin: 0 auto;   /* センタリング */
                 visibility: visible;
+                overflow: visible;
             }
             .print-only * {
                 visibility: visible;
@@ -74,14 +75,14 @@
             table.print-table {
                 width: 100%;
                 border-collapse: collapse;
-                border: 1px solid #000 !important; /* 黒色罫線を強制 */
+                border: 2px solid #000 !important; /* 外枠を黒く太く */
                 font-size: 9pt;
                 table-layout: fixed;
             }
             table.print-table th, table.print-table td {
                 border: 1px solid #000 !important; /* 黒色罫線を強制 */
-                padding: 1px 2px;
-                height: 1.1rem;
+                padding: 4px 2px;
+                height: auto;
                 vertical-align: middle;
                 overflow: hidden;
                 white-space: nowrap;
@@ -537,7 +538,6 @@
                 return overtimeM > 0 ? minutesToTime(overtimeM) : '';
             };
 
-            // バックアップ: データ保存 (JSONダウンロード)
             const handleBackup = () => {
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
                 const downloadAnchorNode = document.createElement('a');
@@ -549,7 +549,6 @@
                 downloadAnchorNode.remove();
             };
 
-            // バックアップ: データ復元 (JSON読み込み)
             const handleRestoreTrigger = () => {
                 if (fileInputRef.current) {
                     fileInputRef.current.click();
@@ -568,9 +567,7 @@
                             if (confirm("現在のデータを上書きして復元しますか？\n(現在のデータは失われます)")) {
                                 setDb(json);
                                 localStorage.setItem(STORAGE_KEY, JSON.stringify(json));
-                                // ユーザーが存在するか確認してリセット
                                 if (json.users.includes(currentUser)) {
-                                    // そのまま
                                 } else if (json.users.length > 0) {
                                     setCurrentUser(json.users[0]);
                                 }
@@ -583,7 +580,6 @@
                         console.error(error);
                         alert("ファイルの読み込みに失敗しました。");
                     }
-                    // リセットして同じファイルを再度選べるようにする
                     e.target.value = '';
                 };
                 reader.readAsText(file);
@@ -591,63 +587,60 @@
 
             const handlePrint = () => { try { window.print(); } catch (e) { alert("Ctrl + P (Command + P) で印刷してください。"); } };
 
-            // html2pdf実行 (修正版)
             const handleHtml2Pdf = async () => {
                 const element = document.querySelector('.print-only');
                 if (!element) return;
 
-                // 一時的にクローンを作成してスタイル適用
                 const clone = element.cloneNode(true);
                 
-                // 画面の最前面に絶対配置で表示して描画させる
                 Object.assign(clone.style, {
                     display: 'block',
-                    position: 'absolute', // absoluteに変更
+                    position: 'fixed',
                     top: '0',
                     left: '0',
-                    width: '210mm',
-                    height: '297mm', // A4
+                    width: '210mm', 
+                    minHeight: '297mm',
                     backgroundColor: 'white',
                     padding: '10mm',
                     boxSizing: 'border-box',
                     visibility: 'visible',
-                    zIndex: '10000', // 最前面
-                    overflow: 'hidden',
-                    fontFamily: '"Noto Sans JP", sans-serif'
+                    zIndex: '10000',
+                    overflow: 'visible',
+                    fontFamily: '"Noto Sans JP", sans-serif',
+                    color: 'black'
                 });
                 
-                // --- 入力値の焼き付け処理 ---
-                // Select要素の値をテキストに置換
                 const originalSelects = element.querySelectorAll('select');
                 const cloneSelects = clone.querySelectorAll('select');
                 originalSelects.forEach((s, i) => {
                     if (cloneSelects[i]) {
                         const val = s.value;
-                        const text = val ? (s.options[s.selectedIndex]?.text || val) : '';
-                        const span = document.createElement('span');
-                        span.textContent = text;
-                        cloneSelects[i].parentNode.replaceChild(span, cloneSelects[i]);
+                        const text = s.options[s.selectedIndex]?.text || '';
+                        const div = document.createElement('div');
+                        div.textContent = text;
+                        div.style.textAlign = 'center';
+                        cloneSelects[i].parentNode.replaceChild(div, cloneSelects[i]);
                     }
                 });
 
-                // Input要素の値をテキストに置換
                 const originalInputs = element.querySelectorAll('input');
                 const cloneInputs = clone.querySelectorAll('input');
                 originalInputs.forEach((inp, i) => {
                     if (cloneInputs[i]) {
                         const val = inp.value;
-                        const span = document.createElement('span');
-                        span.textContent = val;
-                        cloneInputs[i].parentNode.replaceChild(span, cloneInputs[i]);
+                        const div = document.createElement('div');
+                        div.textContent = val;
+                        div.style.textAlign = 'center';
+                        if (inp.style.textAlign === 'left') div.style.textAlign = 'left';
+                        cloneInputs[i].parentNode.replaceChild(div, cloneInputs[i]);
                     }
                 });
 
-                // テーブルスタイル適用
                 const tables = clone.querySelectorAll('table');
                 tables.forEach(t => {
                     t.style.width = '100%';
                     t.style.borderCollapse = 'collapse';
-                    t.style.border = '1px solid black';
+                    t.style.border = '2px solid black';
                     t.style.fontSize = '9pt';
                     t.style.tableLayout = 'fixed';
                 });
@@ -655,12 +648,9 @@
                 const cells = clone.querySelectorAll('th, td');
                 cells.forEach(c => {
                     c.style.border = '1px solid black';
-                    c.style.padding = '1px 2px';
-                    c.style.height = '1.1rem';
+                    c.style.padding = '4px 2px';
                     c.style.verticalAlign = 'middle';
-                    c.style.whiteSpace = 'nowrap';
-                    c.style.overflow = 'hidden';
-                    c.style.color = 'black'; // 文字色黒強制
+                    c.style.color = 'black';
                 });
 
                 document.body.appendChild(clone);
@@ -671,18 +661,17 @@
                     image: { type: 'jpeg', quality: 0.98 },
                     html2canvas: { 
                         scale: 2, 
-                        logging: false, 
-                        useCORS: true,
-                        scrollY: 0,
-                        scrollX: 0
+                        useCORS: true, 
+                        logging: true,
+                        windowWidth: 794,
                     },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
 
                 try {
+                    await new Promise(r => setTimeout(r, 300));
+                    
                     if (window.html2pdf) {
-                        // 一瞬待ってから描画（Reactのレンダリング待ちなど）
-                        await new Promise(r => setTimeout(r, 100));
                         await window.html2pdf().set(opt).from(clone).save();
                     } else {
                         alert('PDF生成ライブラリの読み込みに失敗しました。');
@@ -759,7 +748,6 @@
                                 <div className="flex flex-col md:flex-row gap-3 justify-between items-center mb-3">
                                     <h1 className="text-lg md:text-xl font-bold text-gray-800">勤務実績管理システム</h1>
                                     
-                                    {/* アクションボタン群 */}
                                     <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
                                         <button onClick={handleBackup} className="bg-gray-600 text-white font-bold py-1 px-3 rounded text-xs shadow flex items-center gap-1" title="データを保存">
                                             <i className="ph ph-download-simple"></i> 保存
@@ -784,7 +772,6 @@
                                 </div>
                                 
                                 <div className="bg-gray-50 p-3 rounded border grid grid-cols-1 md:grid-cols-4 gap-3">
-                                    {/* ユーザー選択 & 編集 */}
                                     <div className="flex items-center gap-2">
                                         <select value={currentUser} onChange={(e) => setCurrentUser(e.target.value)} className="border rounded p-2 flex-grow bg-white">
                                             {db.users.map(u => <option key={u} value={u}>{u}</option>)}
@@ -803,7 +790,6 @@
                                         <span>月</span>
                                     </div>
                                     
-                                    {/* 設定エリア */}
                                     <div className="col-span-1 md:col-span-2 flex flex-wrap gap-3 items-center text-xs text-gray-600 justify-end">
                                         <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border">
                                             <span>有給付与:</span>
@@ -855,7 +841,6 @@
                             </div>
                         </div>
 
-                        {/* List View */}
                         <div className="max-w-4xl mx-auto px-2">
                             {dateList.map(({ d, dateStr, dayOfWeek }) => {
                                 const record = currentRecords[dateStr] || {};
