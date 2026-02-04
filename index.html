@@ -36,106 +36,99 @@
             display: none;
         }
 
-        /* 印刷時のスタイル (A4 1枚に収めるための厳密な設定) */
+        /* 印刷時のスタイル */
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 5mm; /* 上下左右5mmの最小余白 */
+                margin: 10mm; /* 余白を確保 */
             }
-            
             body {
                 background-color: white;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-                width: 210mm;
-                height: 297mm;
+                width: 100%;
                 margin: 0;
                 padding: 0;
+                font-size: 10pt; /* 基本フォントサイズ */
             }
             
             .screen-only, .no-print, #root > div > div.screen-only {
                 display: none !important;
             }
 
-            /* 印刷コンテナ */
+            /* 印刷コンテナを表示 */
             .print-only {
                 display: block !important;
-                width: 190mm; /* A4幅(210mm) - 左右余白(10mm分) */
-                margin: 0 auto; /* センタリング */
+                position: relative; 
+                width: 100%;
+                max-width: 100%; 
+                margin: 0 auto;   /* センタリング */
                 visibility: visible;
+                overflow: visible;
             }
             .print-only * {
                 visibility: visible;
             }
 
-            /* コンテンツラッパー */
-            .print-wrapper {
-                width: 100%;
-                text-align: center;
-            }
-
-            /* タイトル */
+            /* タイトル周り */
             .print-title {
                 text-align: center;
-                margin-bottom: 2mm;
+                margin-bottom: 2mm; /* 余白を詰める */
             }
             .print-title h2 {
                 font-size: 14pt;
                 font-weight: bold;
-                border-bottom: 2px solid #000;
+                border-bottom: 1px solid #000;
                 display: inline-block;
                 padding-bottom: 1mm;
                 margin: 0;
-                line-height: 1.2;
             }
 
-            /* テーブル設定 */
+            /* テーブルのスタイルと罫線強制 */
             table.print-table {
                 width: 100%;
                 border-collapse: collapse;
-                border: 1px solid #000 !important;
-                font-size: 8pt; /* フォントサイズを小さく */
+                border: 2px solid #000 !important; /* 外枠を黒く太く */
+                font-size: 8pt; /* フォントサイズを少し小さくして収める */
                 table-layout: fixed;
-                margin-bottom: 2mm;
+                margin-bottom: 1mm;
             }
-            
             table.print-table th, table.print-table td {
-                border: 1px solid #000 !important; /* 確実に黒い罫線 */
-                padding: 0 2px;
-                height: 6.5mm; /* 行の高さを固定して31日分収める */
+                border: 1px solid #000 !important; /* 黒色罫線を強制 */
+                padding: 0 2px; /* 上下のパディングを極力減らす */
+                height: 1.4em; /* 行の高さを固定してページ内収まりを良くする */
                 vertical-align: middle;
-                white-space: nowrap;
                 overflow: hidden;
-                color: #000 !important;
+                white-space: nowrap;
+                color: #000 !important; /* 文字色も黒強制 */
             }
             
-            /* ヘッダー */
+            /* ヘッダーセルのスタイル */
             table.print-table th {
                 background-color: #f0f0f0 !important;
                 font-weight: bold;
-                height: 8mm;
                 text-align: center;
+                height: 1.6em;
             }
 
-            /* フッター情報 */
+            /* フッター情報のスタイル */
             .print-footer {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
                 font-size: 8pt;
                 margin-top: 1mm;
-                text-align: left;
             }
             .print-footer-box {
                 border: 1px solid #000;
-                padding: 1mm 2mm;
-                width: 38%;
+                padding: 1mm 2mm; /* パディング調整 */
+                width: 35%;
             }
             .print-footer-info {
-                border: 1px solid #000;
+                border: 1px solid #ccc;
                 padding: 1mm 2mm;
                 width: 60%;
-                line-height: 1.3;
+                line-height: 1.2;
             }
             
             /* 入力要素のリセット */
@@ -145,15 +138,15 @@
                 width: 100%;
                 font-family: inherit;
                 font-size: inherit;
-                font-weight: inherit;
                 -webkit-appearance: none;
                 -moz-appearance: none;
                 appearance: none;
                 padding: 0;
                 margin: 0;
                 text-align: center;
-                line-height: 100%;
+                line-height: 1;
                 color: #000 !important;
+                height: 100%;
                 display: block;
             }
             input[type="text"] {
@@ -433,6 +426,7 @@
                         fixedOffDay: 5, 
                         defaultLocation: '集落センター',
                         paidLeaveDays: 10,
+                        employmentStartYear: 2025,
                         employmentStartMonth: 4,
                         employmentStartDay: 1
                     } 
@@ -441,12 +435,22 @@
             });
             
             const [currentUser, setCurrentUser] = useState('会津 太郎');
-            const [year, setYear] = useState(2026);
-            const [month, setMonth] = useState(1);
+            // 年度管理: デフォルト2026年度
+            const [fiscalYear, setFiscalYear] = useState(2026);
+            // 選択月: デフォルト4月
+            const [targetMonth, setTargetMonth] = useState(4);
+            
+            // 実年は計算で導出 (4-12月は年度と同じ、1-3月は年度+1)
+            const currentYear = useMemo(() => {
+                return targetMonth >= 4 ? fiscalYear : fiscalYear + 1;
+            }, [fiscalYear, targetMonth]);
             
             const [fixedOffDay, setFixedOffDay] = useState(5);
             const [defaultLocation, setDefaultLocation] = useState('集落センター');
             const [paidLeaveGrantDays, setPaidLeaveGrantDays] = useState(10);
+            
+            // 勤務開始日 (西暦、月、日)
+            const [employmentStartYear, setEmploymentStartYear] = useState(2025);
             const [employmentStartMonth, setEmploymentStartMonth] = useState(4);
             const [employmentStartDay, setEmploymentStartDay] = useState(1);
             
@@ -474,6 +478,8 @@
                                 if (settings.fixedOffDay === undefined) settings.fixedOffDay = 5;
                                 if (!settings.defaultLocation) settings.defaultLocation = '集落センター';
                                 if (settings.paidLeaveDays === undefined) settings.paidLeaveDays = 10;
+                                // 初期値設定
+                                if (settings.employmentStartYear === undefined) settings.employmentStartYear = 2025;
                                 if (settings.employmentStartMonth === undefined) settings.employmentStartMonth = 4;
                                 if (settings.employmentStartDay === undefined) settings.employmentStartDay = 1;
                             });
@@ -492,23 +498,27 @@
                     setFixedOffDay(settings.fixedOffDay !== undefined ? settings.fixedOffDay : 5);
                     setDefaultLocation(settings.defaultLocation || '集落センター');
                     setPaidLeaveGrantDays(settings.paidLeaveDays !== undefined ? settings.paidLeaveDays : 10);
+                    
+                    setEmploymentStartYear(settings.employmentStartYear !== undefined ? settings.employmentStartYear : 2025);
                     setEmploymentStartMonth(settings.employmentStartMonth !== undefined ? settings.employmentStartMonth : 4);
                     setEmploymentStartDay(settings.employmentStartDay !== undefined ? settings.employmentStartDay : 1);
                 }
             }, [currentUser, db.userSettings]);
 
+            // カレンダー生成ロジック (currentYearを使用)
             useEffect(() => {
-                const daysInMonth = new Date(year, month, 0).getDate();
+                const daysInMonth = new Date(currentYear, targetMonth, 0).getDate();
                 const existingUserData = db.data[currentUser] || {};
                 const newRecords = {};
                 const userDefaultLoc = db.userSettings?.[currentUser]?.defaultLocation || '集落センター';
 
                 for (let d = 1; d <= daysInMonth; d++) {
-                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    // dateStr形式: YYYY-MM-DD
+                    const dateStr = `${currentYear}-${String(targetMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     if (existingUserData[dateStr]) {
                         newRecords[dateStr] = existingUserData[dateStr];
                     } else {
-                        const dateObj = new Date(year, month - 1, d);
+                        const dateObj = new Date(currentYear, targetMonth - 1, d);
                         const dayOfWeek = dateObj.getDay();
                         
                         let status = 'work';
@@ -516,8 +526,9 @@
                         let end = '17:15';
                         let breakTime = '60';
 
-                        const isYearEnd = (month === 12 && d >= 29);
-                        const isNewYear = (month === 1 && d <= 3);
+                        // 休日判定 (年末年始 12/29-1/3 を含む)
+                        const isYearEnd = (targetMonth === 12 && d >= 29);
+                        const isNewYear = (targetMonth === 1 && d <= 3);
 
                         if (dayOfWeek === 0 || dayOfWeek === 6) {
                             status = 'off_assigned';
@@ -542,7 +553,7 @@
                     }
                 }
                 setCurrentRecords(newRecords);
-            }, [year, month, currentUser, fixedOffDay, defaultLocation, db.users]);
+            }, [currentYear, targetMonth, currentUser, fixedOffDay, defaultLocation, db.users]);
 
             // --- Logic ---
             const saveData = (updatedRecords) => {
@@ -669,7 +680,7 @@
                     setCurrentUser(newUsers[0]);
                 } else {
                     const defaultName = '新規ユーザー';
-                    setDb({ users: [defaultName], userSettings: { [defaultName]: { fixedOffDay: 5, defaultLocation: '集落センター', paidLeaveDays: 10 } }, data: {} });
+                    setDb({ users: [defaultName], userSettings: { [defaultName]: { fixedOffDay: 5, defaultLocation: '集落センター', paidLeaveDays: 10, employmentStartYear: 2025, employmentStartMonth: 4, employmentStartDay: 1 } }, data: {} });
                     setCurrentUser(defaultName);
                 }
                 setIsEditingUser(false);
@@ -737,19 +748,19 @@
             const handlePrint = () => { try { window.print(); } catch (e) { alert("Ctrl + P (Command + P) で印刷してください。"); } };
 
             const exportToExcel = () => {
-                const daysInMonth = new Date(year, month, 0).getDate();
+                const daysInMonth = new Date(currentYear, targetMonth, 0).getDate();
                 const data = [];
                 data.push(['日付', '曜日', '業務内容', '勤務場所', '出勤', '退勤', '時間外', '備考', 'ステータス']);
                 for (let d = 1; d <= daysInMonth; d++) {
-                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const dateStr = `${currentYear}-${String(targetMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     const r = currentRecords[dateStr] || {};
-                    const dateObj = new Date(year, month - 1, d);
+                    const dateObj = new Date(currentYear, targetMonth - 1, d);
                     const weekDay = WEEKDAYS[dateObj.getDay()];
                     let displayRemarks = r.remarks || '';
                     if(r.status === 'paid_leave') displayRemarks = "年休 " + displayRemarks;
                     if(r.status === 'substitute') displayRemarks = "振替休日 " + displayRemarks;
                     data.push([
-                        `${month}/${d}`, weekDay, r.content || '', r.location || '',
+                        `${targetMonth}/${d}`, weekDay, r.content || '', r.location || '',
                         r.start || '', r.end || '', calculateOvertime(r), displayRemarks,
                         STATUS_OPTIONS.find(o => o.value === r.status)?.label || r.status
                     ]);
@@ -766,8 +777,8 @@
                 const wb = XLSX.utils.book_new();
                 const ws = XLSX.utils.aoa_to_sheet(data);
                 ws['!cols'] = [{ wch: 10 }, { wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 10 }];
-                XLSX.utils.book_append_sheet(wb, ws, `${year}年${month}月`);
-                XLSX.writeFile(wb, `勤務実績_${currentUser}_${year}年${month}月.xlsx`);
+                XLSX.utils.book_append_sheet(wb, ws, `${currentYear}年${targetMonth}月`);
+                XLSX.writeFile(wb, `勤務実績_${currentUser}_${currentYear}年${targetMonth}月.xlsx`);
             };
 
             const stats = useMemo(() => {
@@ -831,15 +842,34 @@
                 };
             }, [currentRecords, paidLeaveGrantDays]);
 
-            const daysInMonth = new Date(year, month, 0).getDate();
+            const daysInMonth = new Date(currentYear, targetMonth, 0).getDate();
             const dateList = [];
             for (let d = 1; d <= daysInMonth; d++) {
                 dateList.push({
                     d,
-                    dateStr: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-                    dayOfWeek: new Date(year, month - 1, d).getDay()
+                    dateStr: `${currentYear}-${String(targetMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+                    dayOfWeek: new Date(currentYear, targetMonth - 1, d).getDay()
                 });
             }
+
+            // Input handlers with validation
+            const handleStartMonthChange = (e) => {
+                let val = parseInt(e.target.value);
+                if (isNaN(val)) return;
+                if (val < 1) val = 1;
+                if (val > 12) val = 12;
+                setEmploymentStartMonth(val);
+                updateUserSettings({employmentStartMonth: val});
+            };
+
+            const handleStartDayChange = (e) => {
+                let val = parseInt(e.target.value);
+                if (isNaN(val)) return;
+                if (val < 1) val = 1;
+                if (val > 31) val = 31;
+                setEmploymentStartDay(val);
+                updateUserSettings({employmentStartDay: val});
+            };
 
             return (
                 <div className="min-h-screen pb-20 md:pb-10">
@@ -871,16 +901,18 @@
                                         <button onClick={() => setIsEditingUser(true)} className="bg-white border text-gray-600 p-2 rounded hover:bg-gray-100"><i className="ph ph-pencil-simple text-lg"></i></button>
                                         <button onClick={() => setIsAddingUser(true)} className="bg-gray-200 p-2 rounded text-sm text-center min-w-[2rem]">＋</button>
                                     </div>
-                                    <div className="flex items-center gap-2 justify-center">
-                                        <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="border rounded p-2 w-20 text-center" />
-                                        <span>年</span>
-                                        <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="border rounded p-2 w-16 bg-white">
-                                            {[...Array(12)].map((_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}
+                                    {/* 年度・月選択エリア */}
+                                    <div className="flex items-center gap-1 justify-center bg-blue-50 px-2 rounded border border-blue-100">
+                                        <input type="number" value={fiscalYear} onChange={(e) => setFiscalYear(Number(e.target.value))} className="border rounded p-1 w-16 text-center" />
+                                        <span className="text-xs">年度</span>
+                                        <select value={targetMonth} onChange={(e) => setTargetMonth(Number(e.target.value))} className="border rounded p-1 w-14 bg-white">
+                                            {[4,5,6,7,8,9,10,11,12,1,2,3].map(m => <option key={m} value={m}>{m}</option>)}
                                         </select>
-                                        <span>月</span>
+                                        <span className="text-xs">月</span>
+                                        <span className="text-xs text-gray-500 ml-1">({currentYear}年)</span>
                                     </div>
                                     
-                                    <div className="col-span-1 md:col-span-2 flex flex-wrap gap-3 items-center text-xs text-gray-600 justify-end">
+                                    <div className="col-span-1 md:col-span-2 flex flex-wrap gap-2 items-center text-xs text-gray-600 justify-end">
                                         <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border">
                                             <span>有給付与:</span>
                                             <input type="number" value={paidLeaveGrantDays} onChange={(e) => {
@@ -891,19 +923,16 @@
                                             <span>日</span>
                                         </div>
                                         <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border">
-                                            <span>開始日:</span>
-                                            <input type="number" value={employmentStartMonth} onChange={(e) => {
+                                            <span>開始:</span>
+                                            <input type="number" value={employmentStartYear} onChange={(e) => {
                                                 const val = Number(e.target.value);
-                                                setEmploymentStartMonth(val);
-                                                updateUserSettings({employmentStartMonth: val});
-                                            }} className="border rounded p-1 w-10 text-center" />
-                                            <span>月</span>
-                                            <input type="number" value={employmentStartDay} onChange={(e) => {
-                                                const val = Number(e.target.value);
-                                                setEmploymentStartDay(val);
-                                                updateUserSettings({employmentStartDay: val});
-                                            }} className="border rounded p-1 w-10 text-center" />
-                                            <span>日</span>
+                                                setEmploymentStartYear(val);
+                                                updateUserSettings({employmentStartYear: val});
+                                            }} className="border rounded p-1 w-14 text-center" placeholder="年" />
+                                            <span>/</span>
+                                            <input type="number" value={employmentStartMonth} onChange={handleStartMonthChange} className="border rounded p-1 w-10 text-center" placeholder="月" min="1" max="12" />
+                                            <span>/</span>
+                                            <input type="number" value={employmentStartDay} onChange={handleStartDayChange} className="border rounded p-1 w-10 text-center" placeholder="日" min="1" max="31" />
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <span>週休:</span>
@@ -1006,69 +1035,67 @@
                     </div>
 
                     <div className="print-only">
-                        <div className="print-wrapper">
-                            <div className="print-title">
-                                <h2>令和 {year - 2018} 年 {month} 月 勤務実績 ({currentUser})</h2>
+                        <div className="print-title">
+                            <h2>令和 {currentYear - 2018} 年 {targetMonth} 月 勤務実績 ({currentUser})</h2>
+                        </div>
+                        <table className="print-table">
+                            <thead>
+                                <tr className="bg-gray-100 text-center">
+                                    <th className="w-8">曜<br/>日</th>
+                                    <th className="w-8">日</th>
+                                    <th>業務内容</th>
+                                    <th className="w-24">勤務場所</th>
+                                    <th className="w-14">出勤</th>
+                                    <th className="w-14">退勤</th>
+                                    <th className="w-12">時間外</th>
+                                    <th className="w-24">備考</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {dateList.map(({ d, dateStr, dayOfWeek }) => {
+                                    const record = currentRecords[dateStr] || {};
+                                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                                    const isHoliday = record.status === 'holiday';
+                                    const isWorkLike = record.status === 'work' || record.status === 'substitute';
+                                    let displayRemarks = record.remarks || '';
+                                    if(record.status === 'paid_leave' && !displayRemarks.includes('年休')) displayRemarks = "年休 " + displayRemarks;
+                                    if(record.status === 'substitute' && !displayRemarks.includes('振替')) displayRemarks = "振替休日 " + displayRemarks;
+                                    if(record.status === 'off_assigned') displayRemarks = "週休日";
+                                    if(record.status === 'holiday') displayRemarks = "祝日";
+                                    return (
+                                        <tr key={dateStr}>
+                                            <td className={`text-center font-bold ${dayOfWeek === 0 || isHoliday ? 'text-black' : 'text-black'}`}>{WEEKDAYS[dayOfWeek]}</td>
+                                            <td className="text-center font-bold">{d}</td>
+                                            <td>{record.content}</td>
+                                            <td className="text-center">{isWorkLike ? (record.location || defaultLocation) : ''}</td>
+                                            <td className="text-center">{isWorkLike ? record.start : ''}</td>
+                                            <td className="text-center">{isWorkLike ? record.end : ''}</td>
+                                            <td className="text-center">{calculateOvertime(record)}</td>
+                                            <td className="text-xs">{displayRemarks}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        <div className="print-footer">
+                            <div className="print-footer-box">
+                                <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
+                                    <span>出勤日数</span><span className="font-bold">{stats.workDays} 日</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
+                                    <span>年休使用</span><span className="font-bold">{Math.floor(stats.usedPaidLeaveHours / 8)}日 {stats.usedPaidLeaveHours % 8 > 0 ? ` ${stats.usedPaidLeaveHours % 8}時間` : ''}</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
+                                    <span>時間外合計</span><span className="font-bold">{stats.otHours}時間 {String(stats.otMins).padStart(2, '0')}分</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                                    <span>欠勤</span><span className="font-bold">{stats.absentDays} 日</span>
+                                </div>
                             </div>
-                            <table className="print-table">
-                                <thead>
-                                    <tr className="bg-gray-100 text-center">
-                                        <th className="w-8">曜<br/>日</th>
-                                        <th className="w-8">日</th>
-                                        <th>業務内容</th>
-                                        <th className="w-24">勤務場所</th>
-                                        <th className="w-14">出勤</th>
-                                        <th className="w-14">退勤</th>
-                                        <th className="w-12">時間外</th>
-                                        <th className="w-24">備考</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {dateList.map(({ d, dateStr, dayOfWeek }) => {
-                                        const record = currentRecords[dateStr] || {};
-                                        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                                        const isHoliday = record.status === 'holiday';
-                                        const isWorkLike = record.status === 'work' || record.status === 'substitute';
-                                        let displayRemarks = record.remarks || '';
-                                        if(record.status === 'paid_leave' && !displayRemarks.includes('年休')) displayRemarks = "年休 " + displayRemarks;
-                                        if(record.status === 'substitute' && !displayRemarks.includes('振替')) displayRemarks = "振替休日 " + displayRemarks;
-                                        if(record.status === 'off_assigned') displayRemarks = "週休日";
-                                        if(record.status === 'holiday') displayRemarks = "祝日";
-                                        return (
-                                            <tr key={dateStr}>
-                                                <td className={`text-center font-bold ${dayOfWeek === 0 || isHoliday ? 'text-black' : 'text-black'}`}>{WEEKDAYS[dayOfWeek]}</td>
-                                                <td className="text-center font-bold">{d}</td>
-                                                <td>{record.content}</td>
-                                                <td className="text-center">{isWorkLike ? (record.location || defaultLocation) : ''}</td>
-                                                <td className="text-center">{isWorkLike ? record.start : ''}</td>
-                                                <td className="text-center">{isWorkLike ? record.end : ''}</td>
-                                                <td className="text-center">{calculateOvertime(record)}</td>
-                                                <td className="text-xs">{displayRemarks}</td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                            <div className="print-footer">
-                                <div className="print-footer-box">
-                                    <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
-                                        <span>出勤日数</span><span className="font-bold">{stats.workDays} 日</span>
-                                    </div>
-                                    <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
-                                        <span>年休使用</span><span className="font-bold">{Math.floor(stats.usedPaidLeaveHours / 8)}日 {stats.usedPaidLeaveHours % 8 > 0 ? ` ${stats.usedPaidLeaveHours % 8}時間` : ''}</span>
-                                    </div>
-                                    <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
-                                        <span>時間外合計</span><span className="font-bold">{stats.otHours}時間 {String(stats.otMins).padStart(2, '0')}分</span>
-                                    </div>
-                                    <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                                        <span>欠勤</span><span className="font-bold">{stats.absentDays} 日</span>
-                                    </div>
-                                </div>
-                                <div className="print-footer-info">
-                                    <strong>【年休管理】</strong> 付与: {paidLeaveGrantDays}日 → 残: <strong>{stats.remainingDays}日 {stats.remainingHours}時間</strong><br/>
-                                    <strong>【振替残】</strong> {stats.subHolidayBalance} 日分<br/>
-                                    <strong>【勤務条件】</strong> 週4日 / 8:30～17:15 (休60分)
-                                </div>
+                            <div className="print-footer-info">
+                                <strong>【年休管理】</strong> 付与: {paidLeaveGrantDays}日 → 残: <strong>{stats.remainingDays}日 {stats.remainingHours}時間</strong><br/>
+                                <strong>【振替残】</strong> {stats.subHolidayBalance} 日分<br/>
+                                <strong>【勤務条件】</strong> 週4日 / 8:30～17:15 (休60分)
                             </div>
                         </div>
                     </div>
