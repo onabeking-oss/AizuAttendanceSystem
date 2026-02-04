@@ -16,8 +16,6 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <!-- Phosphor Icons (for icons) -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <!-- html2pdf.js (PDF Export) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
@@ -61,9 +59,9 @@
             /* 印刷コンテナを表示 */
             .print-only {
                 display: block !important;
-                position: relative; /* フロー配置に戻す */
+                position: relative; 
                 width: 100%;
-                max-width: 100%;
+                max-width: 100%; 
                 margin: 0 auto;   /* センタリング */
                 visibility: visible;
                 overflow: visible;
@@ -75,7 +73,7 @@
             /* タイトル周り */
             .print-title {
                 text-align: center;
-                margin-bottom: 3mm;
+                margin-bottom: 2mm; /* 余白を詰める */
             }
             .print-title h2 {
                 font-size: 14pt;
@@ -91,14 +89,14 @@
                 width: 100%;
                 border-collapse: collapse;
                 border: 2px solid #000 !important; /* 外枠を黒く太く */
-                font-size: 8.5pt;
+                font-size: 8pt; /* フォントサイズを少し小さくして収める */
                 table-layout: fixed;
-                margin-bottom: 2mm;
+                margin-bottom: 1mm;
             }
             table.print-table th, table.print-table td {
                 border: 1px solid #000 !important; /* 黒色罫線を強制 */
-                padding: 1px 2px;
-                height: 1.1em; /* 行の高さ調整 */
+                padding: 0 2px; /* 上下のパディングを極力減らす */
+                height: 1.4em; /* 行の高さを固定してページ内収まりを良くする */
                 vertical-align: middle;
                 overflow: hidden;
                 white-space: nowrap;
@@ -110,7 +108,7 @@
                 background-color: #f0f0f0 !important;
                 font-weight: bold;
                 text-align: center;
-                height: 1.8em;
+                height: 1.6em;
             }
 
             /* フッター情報のスタイル */
@@ -123,14 +121,14 @@
             }
             .print-footer-box {
                 border: 1px solid #000;
-                padding: 2mm;
+                padding: 1mm 2mm; /* パディング調整 */
                 width: 35%;
             }
             .print-footer-info {
                 border: 1px solid #ccc;
-                padding: 2mm;
+                padding: 1mm 2mm;
                 width: 60%;
-                line-height: 1.3;
+                line-height: 1.2;
             }
             
             /* 入力要素のリセット */
@@ -709,100 +707,6 @@
 
             const handlePrint = () => { try { window.print(); } catch (e) { alert("Ctrl + P (Command + P) で印刷してください。"); } };
 
-            const handleHtml2Pdf = async () => {
-                const element = document.querySelector('.print-only');
-                if (!element) return;
-
-                const clone = element.cloneNode(true);
-                
-                Object.assign(clone.style, {
-                    display: 'block',
-                    position: 'absolute',
-                    top: '0',
-                    left: '0',
-                    width: '210mm',
-                    height: '297mm',
-                    backgroundColor: 'white',
-                    padding: '10mm',
-                    boxSizing: 'border-box',
-                    visibility: 'visible',
-                    zIndex: '10000',
-                    overflow: 'visible',
-                    fontFamily: '"Noto Sans JP", sans-serif',
-                    color: 'black'
-                });
-                
-                const originalSelects = element.querySelectorAll('select');
-                const cloneSelects = clone.querySelectorAll('select');
-                originalSelects.forEach((s, i) => {
-                    if (cloneSelects[i]) {
-                        const val = s.value;
-                        const text = val ? (s.options[s.selectedIndex]?.text || val) : '';
-                        const span = document.createElement('span');
-                        span.textContent = text;
-                        cloneSelects[i].parentNode.replaceChild(span, cloneSelects[i]);
-                    }
-                });
-
-                const originalInputs = element.querySelectorAll('input');
-                const cloneInputs = clone.querySelectorAll('input');
-                originalInputs.forEach((inp, i) => {
-                    if (cloneInputs[i]) {
-                        const val = inp.value;
-                        const span = document.createElement('span');
-                        span.textContent = val;
-                        cloneInputs[i].parentNode.replaceChild(span, cloneInputs[i]);
-                    }
-                });
-
-                const tables = clone.querySelectorAll('table');
-                tables.forEach(t => {
-                    t.style.width = '100%';
-                    t.style.borderCollapse = 'collapse';
-                    t.style.border = '2px solid black';
-                    t.style.fontSize = '9pt';
-                    t.style.tableLayout = 'fixed';
-                });
-                
-                const cells = clone.querySelectorAll('th, td');
-                cells.forEach(c => {
-                    c.style.border = '1px solid black';
-                    c.style.padding = '4px 2px';
-                    c.style.verticalAlign = 'middle';
-                    c.style.color = 'black';
-                });
-
-                document.body.appendChild(clone);
-
-                const opt = {
-                    margin: 0,
-                    filename: `勤務実績_${currentUser}_${year}年${month}月.pdf`,
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { 
-                        scale: 2, 
-                        useCORS: true, 
-                        logging: true,
-                        windowWidth: 794,
-                    },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                };
-
-                try {
-                    await new Promise(r => setTimeout(r, 300));
-                    
-                    if (window.html2pdf) {
-                        await window.html2pdf().set(opt).from(clone).save();
-                    } else {
-                        alert('PDF生成ライブラリの読み込みに失敗しました。');
-                    }
-                } catch (e) {
-                    console.error(e);
-                    alert('PDF生成中にエラーが発生しました。');
-                } finally {
-                    document.body.removeChild(clone);
-                }
-            };
-
             const exportToExcel = () => {
                 const daysInMonth = new Date(year, month, 0).getDate();
                 const data = [];
@@ -918,7 +822,6 @@
                                         <div className="w-px bg-gray-300 mx-1"></div>
                                         <button onClick={exportToExcel} className="bg-green-600 text-white font-bold py-2 px-4 rounded text-sm shadow">Excel</button>
                                         <button onClick={handlePrint} className="bg-blue-600 text-white font-bold py-2 px-4 rounded text-sm shadow">印刷/PDF</button>
-                                        <button onClick={handleHtml2Pdf} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded text-sm shadow">PDF保存(html2pdf)</button>
                                     </div>
                                 </div>
                                 
