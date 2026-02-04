@@ -501,13 +501,17 @@
                         let end = '17:15';
                         let breakTime = '60';
 
+                        // 休日判定ロジック更新 (年末年始 12/29-1/3 を含む)
+                        const isYearEnd = (month === 12 && d >= 29);
+                        const isNewYear = (month === 1 && d <= 3);
+
                         if (dayOfWeek === 0 || dayOfWeek === 6) {
                             status = 'off_assigned';
                             start = ''; end = ''; breakTime = '';
                         } else if (dayOfWeek === fixedOffDay) {
                             status = 'off_assigned';
                             start = ''; end = ''; breakTime = '';
-                        } else if (HOLIDAYS_DATA[dateStr]) {
+                        } else if (HOLIDAYS_DATA[dateStr] || isYearEnd || isNewYear) {
                             status = 'holiday';
                             start = ''; end = ''; breakTime = '';
                         }
@@ -519,7 +523,7 @@
                             breakTime,
                             content: '',
                             location: userDefaultLoc,
-                            remarks: HOLIDAYS_DATA[dateStr] || ''
+                            remarks: HOLIDAYS_DATA[dateStr] || (isYearEnd || isNewYear ? '年末年始休日' : '')
                         };
                     }
                 }
@@ -557,7 +561,13 @@
             };
 
             const openLeaveModal = (dateStr, dayOfWeek) => {
-                const isHoliday = dayOfWeek === 0 || dayOfWeek === 6 || dayOfWeek === fixedOffDay || !!HOLIDAYS_DATA[dateStr];
+                // 年末年始判定も加える
+                const d = new Date(dateStr).getDate();
+                const m = new Date(dateStr).getMonth() + 1;
+                const isYearEnd = (m === 12 && d >= 29);
+                const isNewYear = (m === 1 && d <= 3);
+                
+                const isHoliday = dayOfWeek === 0 || dayOfWeek === 6 || dayOfWeek === fixedOffDay || !!HOLIDAYS_DATA[dateStr] || isYearEnd || isNewYear;
                 setIsModalDateHoliday(isHoliday);
                 setActiveDateForModal(dateStr);
             };
@@ -593,12 +603,18 @@
                     case 'reset_off':
                         const dateObj = new Date(dateStr);
                         const dayOfWeek = dateObj.getDay();
+                        const d = dateObj.getDate();
+                        const m = dateObj.getMonth() + 1;
+                        const isYearEnd = (m === 12 && d >= 29);
+                        const isNewYear = (m === 1 && d <= 3);
+
                         if (dayOfWeek === 0 || dayOfWeek === 6 || dayOfWeek === fixedOffDay) {
                             r.status = 'off_assigned';
-                        } else if (HOLIDAYS_DATA[dateStr]) {
+                        } else if (HOLIDAYS_DATA[dateStr] || isYearEnd || isNewYear) {
                             r.status = 'holiday';
                         }
-                        r.start = ''; r.end = ''; r.remarks = HOLIDAYS_DATA[dateStr] || '';
+                        r.start = ''; r.end = ''; 
+                        r.remarks = HOLIDAYS_DATA[dateStr] || (isYearEnd || isNewYear ? '年末年始休日' : '');
                         break;
                 }
                 updatedRecords[dateStr] = r;
@@ -725,6 +741,16 @@
                         STATUS_OPTIONS.find(o => o.value === r.status)?.label || r.status
                     ]);
                 }
+                
+                // 集計行の追加
+                data.push([]); // 空行
+                data.push(['【集計】']);
+                data.push(['出勤日数', `${stats.workDays} 日`]);
+                data.push(['年休使用', `${Math.floor(stats.usedPaidLeaveHours / 8)}日 ${stats.usedPaidLeaveHours % 8}時間`]);
+                data.push(['欠勤', `${stats.absentDays} 日`]);
+                data.push(['時間外合計', `${stats.otHours}時間 ${String(stats.otMins).padStart(2, '0')}分`]);
+                data.push(['振替残', `${stats.subHolidayBalance} 日分`]);
+
                 const wb = XLSX.utils.book_new();
                 const ws = XLSX.utils.aoa_to_sheet(data);
                 ws['!cols'] = [{ wch: 10 }, { wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 10 }];
@@ -1001,6 +1027,9 @@
                                 </div>
                                 <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
                                     <span>年休使用</span><span className="font-bold">{Math.floor(stats.usedPaidLeaveHours / 8)}日 {stats.usedPaidLeaveHours % 8 > 0 ? ` ${stats.usedPaidLeaveHours % 8}時間` : ''}</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #000', marginBottom: '1mm'}}>
+                                    <span>時間外合計</span><span className="font-bold">{stats.otHours}時間 {String(stats.otMins).padStart(2, '0')}分</span>
                                 </div>
                                 <div style={{display: 'flex', justifyContent: 'space-between'}}>
                                     <span>欠勤</span><span className="font-bold">{stats.absentDays} 日</span>
