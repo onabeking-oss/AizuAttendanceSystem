@@ -42,15 +42,15 @@
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 5mm 10mm;
+                margin: 10mm; /* 余白を確保 */
             }
             body {
                 background-color: white;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-                width: 210mm;
-                height: 297mm;
-                overflow: hidden;
+                width: 100%;
+                margin: 0;
+                padding: 0;
             }
             
             .screen-only, .no-print, #root > div > div.screen-only {
@@ -60,17 +60,32 @@
             /* 印刷コンテナを表示 */
             .print-only {
                 display: block !important;
-                position: absolute;
-                top: 0;
-                left: 0;
+                position: static; /* 通常のフローに戻すことでセンタリングを有効化 */
                 width: 100%;
-                height: 100%;
-                margin: 0;
-                padding: 0;
+                max-width: 190mm; /* A4幅(210mm) - 左右マージン(10mm*2) */
+                margin: 0 auto;   /* センタリング */
                 visibility: visible;
             }
             .print-only * {
                 visibility: visible;
+            }
+
+            /* テーブルのスタイルと罫線強制 */
+            table.print-table {
+                width: 100%;
+                border-collapse: collapse;
+                border: 1px solid #000 !important; /* 黒色罫線を強制 */
+                font-size: 9pt;
+                table-layout: fixed;
+            }
+            table.print-table th, table.print-table td {
+                border: 1px solid #000 !important; /* 黒色罫線を強制 */
+                padding: 1px 2px;
+                height: 1.1rem;
+                vertical-align: middle;
+                overflow: hidden;
+                white-space: nowrap;
+                color: #000 !important; /* 文字色も黒強制 */
             }
             
             /* 入力要素のリセット */
@@ -87,6 +102,7 @@
                 margin: 0;
                 text-align: center;
                 line-height: 1;
+                color: #000 !important;
             }
             input[type="text"] {
                 text-align: left;
@@ -575,7 +591,7 @@
 
             const handlePrint = () => { try { window.print(); } catch (e) { alert("Ctrl + P (Command + P) で印刷してください。"); } };
 
-            // html2pdf実行 (修正版2)
+            // html2pdf実行 (修正版)
             const handleHtml2Pdf = async () => {
                 const element = document.querySelector('.print-only');
                 if (!element) return;
@@ -583,10 +599,10 @@
                 // 一時的にクローンを作成してスタイル適用
                 const clone = element.cloneNode(true);
                 
-                // 画面の最前面に固定表示して描画させる (確実にレンダリングさせるため)
+                // 画面の最前面に絶対配置で表示して描画させる
                 Object.assign(clone.style, {
                     display: 'block',
-                    position: 'fixed', // absolute -> fixed
+                    position: 'absolute', // absoluteに変更
                     top: '0',
                     left: '0',
                     width: '210mm',
@@ -610,7 +626,6 @@
                         const text = val ? (s.options[s.selectedIndex]?.text || val) : '';
                         const span = document.createElement('span');
                         span.textContent = text;
-                        // スタイル維持のため親要素など確認が必要だが今回は単純置換
                         cloneSelects[i].parentNode.replaceChild(span, cloneSelects[i]);
                     }
                 });
@@ -627,7 +642,7 @@
                     }
                 });
 
-                // テーブルレイアウトの強制
+                // テーブルスタイル適用
                 const tables = clone.querySelectorAll('table');
                 tables.forEach(t => {
                     t.style.width = '100%';
@@ -645,6 +660,7 @@
                     c.style.verticalAlign = 'middle';
                     c.style.whiteSpace = 'nowrap';
                     c.style.overflow = 'hidden';
+                    c.style.color = 'black'; // 文字色黒強制
                 });
 
                 document.body.appendChild(clone);
@@ -653,12 +669,20 @@
                     margin: 0,
                     filename: `勤務実績_${currentUser}_${year}年${month}月.pdf`,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, logging: false, useCORS: true },
+                    html2canvas: { 
+                        scale: 2, 
+                        logging: false, 
+                        useCORS: true,
+                        scrollY: 0,
+                        scrollX: 0
+                    },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
 
                 try {
                     if (window.html2pdf) {
+                        // 一瞬待ってから描画（Reactのレンダリング待ちなど）
+                        await new Promise(r => setTimeout(r, 100));
                         await window.html2pdf().set(opt).from(clone).save();
                     } else {
                         alert('PDF生成ライブラリの読み込みに失敗しました。');
