@@ -741,16 +741,6 @@
                         STATUS_OPTIONS.find(o => o.value === r.status)?.label || r.status
                     ]);
                 }
-                
-                // 集計行の追加
-                data.push([]); // 空行
-                data.push(['【集計】']);
-                data.push(['出勤日数', `${stats.workDays} 日`]);
-                data.push(['年休使用', `${Math.floor(stats.usedPaidLeaveHours / 8)}日 ${stats.usedPaidLeaveHours % 8}時間`]);
-                data.push(['欠勤', `${stats.absentDays} 日`]);
-                data.push(['時間外合計', `${stats.otHours}時間 ${String(stats.otMins).padStart(2, '0')}分`]);
-                data.push(['振替残', `${stats.subHolidayBalance} 日分`]);
-
                 const wb = XLSX.utils.book_new();
                 const ws = XLSX.utils.aoa_to_sheet(data);
                 ws['!cols'] = [{ wch: 10 }, { wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 10 }];
@@ -832,7 +822,8 @@
             return (
                 <div className="min-h-screen pb-20 md:pb-10">
                     <div className="screen-only">
-                        <div className="bg-white shadow p-3 md:p-4 mb-4 sticky top-0 z-20">
+                        {/* ヘッダー固定解除 (relative md:sticky) */}
+                        <div className="bg-white shadow p-3 md:p-4 mb-4 relative md:sticky md:top-0 z-20">
                             <div className="max-w-6xl mx-auto">
                                 <div className="flex flex-col md:flex-row gap-3 justify-between items-center mb-3">
                                     <h1 className="text-lg md:text-xl font-bold text-gray-800">勤務実績管理システム</h1>
@@ -891,29 +882,31 @@
                                     </div>
                                 </div>
 
-                                {/* 集計ダッシュボード */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                                    <div className="bg-white p-3 rounded shadow-sm border-l-4 border-blue-500">
-                                        <div className="text-xs text-gray-500">勤務日数</div>
-                                        <div className="font-bold text-lg">{stats.workDays} <span className="text-sm font-normal">日</span></div>
+                                {/* 集計ダッシュボード (5列に拡張・振替残追加) */}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-2">
+                                    <div className="bg-white p-2 rounded shadow-sm border-l-4 border-blue-500">
+                                        <div className="text-[10px] text-gray-500">勤務日数</div>
+                                        <div className="font-bold text-base">{stats.workDays} <span className="text-xs font-normal">日</span></div>
                                     </div>
-                                    <div className="bg-white p-3 rounded shadow-sm border-l-4 border-red-500">
-                                        <div className="text-xs text-gray-500">時間外合計</div>
-                                        <div className="font-bold text-lg">{stats.otHours}:{String(stats.otMins).padStart(2, '0')}</div>
+                                    <div className="bg-white p-2 rounded shadow-sm border-l-4 border-red-500">
+                                        <div className="text-[10px] text-gray-500">時間外合計</div>
+                                        <div className="font-bold text-base">{stats.otHours}:{String(stats.otMins).padStart(2, '0')}</div>
                                     </div>
-                                    <div className="bg-white p-3 rounded shadow-sm border-l-4 border-orange-500">
-                                        <div className="text-xs text-gray-500">年休消化</div>
-                                        <div className="font-bold text-lg">{stats.usedDays} <span className="text-sm font-normal">日</span> {stats.usedHours > 0 ? `${stats.usedHours}時間` : ''}</div>
+                                    <div className="bg-white p-2 rounded shadow-sm border-l-4 border-orange-500">
+                                        <div className="text-[10px] text-gray-500">年休消化</div>
+                                        <div className="font-bold text-base">{stats.usedDays} <span className="text-xs font-normal">日</span> {stats.usedHours > 0 ? `${stats.usedHours}h` : ''}</div>
                                     </div>
-                                    <div className="bg-white p-3 rounded shadow-sm border-l-4 border-green-500">
-                                        <div className="text-xs text-gray-500">年休残日数</div>
-                                        <div className="font-bold text-lg">{stats.remainingDays} <span className="text-sm font-normal">日</span> {stats.remainingHours > 0 ? `${stats.remainingHours}時間` : ''}</div>
+                                    <div className="bg-white p-2 rounded shadow-sm border-l-4 border-green-500">
+                                        <div className="text-[10px] text-gray-500">年休残日数</div>
+                                        <div className="font-bold text-base">{stats.remainingDays} <span className="text-xs font-normal">日</span> {stats.remainingHours > 0 ? `${stats.remainingHours}h` : ''}</div>
                                     </div>
-                                </div>
-                                <div className="text-right text-xs mb-4">
-                                    <span className={`font-bold px-2 py-1 rounded ${stats.subHolidayBalance < 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                        振替休日残: {stats.subHolidayBalance} 日分
-                                    </span>
+                                    {/* 振替休日残パネル */}
+                                    <div className={`bg-white p-2 rounded shadow-sm border-l-4 ${stats.subHolidayBalance !== 0 ? 'border-purple-500 bg-purple-50' : 'border-gray-300'}`}>
+                                        <div className="text-[10px] text-gray-500">振替休日残</div>
+                                        <div className={`font-bold text-base ${stats.subHolidayBalance < 0 ? 'text-red-600' : ''}`}>
+                                            {stats.subHolidayBalance} <span className="text-xs font-normal">日分</span>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {isAddingUser && (
